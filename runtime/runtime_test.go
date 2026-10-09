@@ -262,9 +262,11 @@ func TestRunFailures(t *testing.T) {
 	if rep.Error != "no pipe" {
 		t.Errorf("pipe failure: %q", rep.Error)
 	}
-	failAfter(t, 0)
-	if rep := run(p, 0); rep.Error == "" {
-		t.Error("redirect failure not reported")
+	redirectOutput = func(*os.File) (func(), error) { return nil, errors.New("no redirect") }
+	rep = run(p, 0)
+	redirectOutput = redirect
+	if rep.Error != "no redirect" {
+		t.Errorf("redirect failure: %q", rep.Error)
 	}
 }
 

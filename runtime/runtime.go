@@ -128,8 +128,12 @@ func serve(p Program, in io.Reader, out io.Writer) {
 	}
 }
 
-// pipe is os.Pipe, a variable so a test can make it fail.
-var pipe = os.Pipe
+// pipe and redirectOutput are os.Pipe and redirect, variables so a test can
+// make them fail on every system.
+var (
+	pipe           = os.Pipe
+	redirectOutput = redirect
+)
 
 // stdMu serialises the redirection of os.Stdout and os.Stderr.
 var stdMu sync.Mutex
@@ -148,7 +152,7 @@ func run(p Program, i int) (rep Reply) {
 		rep.Error = err.Error()
 		return rep
 	}
-	restore, err := redirect(w)
+	restore, err := redirectOutput(w)
 	if err != nil {
 		_ = r.Close()
 		_ = w.Close()

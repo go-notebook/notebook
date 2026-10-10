@@ -198,9 +198,12 @@ func printReport(w io.Writer, nb *format.Notebook, rep *kernel.Report) {
 			continue
 		}
 		r := rep.Results[code]
-		state := "kept"
-		if r.Ran {
+		state := "not run"
+		switch {
+		case r.Ran:
 			state = "ran in " + r.Took.Round(time.Microsecond).String()
+		case r.Kept:
+			state = "kept"
 		}
 		fmt.Fprintf(w, "── cell %d (line %d, %s)\n", code, c.Line, state)
 		if r.Output != "" {

@@ -79,8 +79,8 @@ func TestRunOnlyWhatChanged(t *testing.T) {
 
 	// Nothing changed: nothing runs, nothing is built.
 	rep, _ = k.Run(cells)
-	if got := ran(rep); got != "...." || rep.Built || shown(rep.Results[2]) != "30" {
-		t.Errorf("no change: %s built=%v", got, rep.Built)
+	if got := ran(rep); got != "...." || rep.Built || shown(rep.Results[2]) != "30" || !rep.Results[2].Kept {
+		t.Errorf("no change: %s built=%v kept=%v", got, rep.Built, rep.Results[2].Kept)
 	}
 
 	// A leaf changes: only it runs, after a rebuild; its inputs are handed
@@ -160,6 +160,9 @@ func TestDiagnostics(t *testing.T) {
 	}
 	if len(rep.Diags) == 0 || !strings.Contains(rep.Results[1].Error, "already defined") {
 		t.Errorf("duplicate: %+v", rep.Diags)
+	}
+	if rep.Results[0].Error != "not run: the notebook has errors" || rep.Results[0].Kept || rep.Results[0].Ran {
+		t.Errorf("a cell stopped by another's error: %+v", rep.Results[0])
 	}
 	rep, _ = k.Run(codes("x := 1\n", "y := undefinedName + x\n"))
 	if !strings.Contains(rep.Results[1].Error, "undefined: undefinedName") || !strings.Contains(rep.Results[1].Error, "5:6") {

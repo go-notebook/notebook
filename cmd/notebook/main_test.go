@@ -100,7 +100,7 @@ func TestFailures(t *testing.T) {
 	bad := notebook(t, "```go\nx := 1\n```\n```go\nx := 2\n```\n```go\npanic(\"no\")\n```\n")
 	out.Reset()
 	err := run([]string{"run", "-work", t.TempDir(), bad}, &out, &errs)
-	if err == nil || !strings.Contains(out.String(), "error: ") {
+	if err == nil || !strings.Contains(out.String(), "error: ") || !strings.Contains(out.String(), "(line 2, not run)") || strings.Contains(out.String(), "kept") {
 		t.Errorf("failing notebook: %v\n%s", err, out.String())
 	}
 	if err := run([]string{"html", "-work", t.TempDir(), bad}, &out, &errs); err == nil {

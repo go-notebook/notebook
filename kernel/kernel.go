@@ -66,7 +66,8 @@ type Result struct {
 	Output  string              // what it printed
 	Display []map[string][]byte // what it showed
 	Error   string              // a compile error, a panic, or a failed input
-	Ran     bool                // false when the result was kept from before
+	Ran     bool                // it ran in this Run
+	Kept    bool                // its result was kept from before; neither means it did not run
 	Took    time.Duration       // how long it ran
 }
 
@@ -138,6 +139,11 @@ func (k *Kernel) Run(cells []gen.Code) (*Report, error) {
 		for _, d := range prog.Diags {
 			if d.Cell >= 0 {
 				rep.Results[d.Cell].Error = strings.TrimSpace(rep.Results[d.Cell].Error + "\n" + d.String())
+			}
+		}
+		for i := range rep.Results {
+			if rep.Results[i].Error == "" {
+				rep.Results[i].Error = "not run: the notebook has errors"
 			}
 		}
 		rep.Build = time.Since(start)
@@ -239,7 +245,7 @@ func (k *Kernel) execute(prog *gen.Program, rep *Report, force map[int]bool) {
 // kept returns a cell's stored result, marked as not run.
 func (k *Kernel) kept(i int, key string) Result {
 	r := k.results[key]
-	r.Cell, r.Ran = i, false
+	r.Cell, r.Ran, r.Kept = i, false, true
 	return r
 }
 

@@ -28,19 +28,19 @@ func prose(t *testing.T, src string) string {
 
 func TestMathInline(t *testing.T) {
 	for src, want := range map[string]string{
-		"a $x^2$ b":                 "<p>a [i] b</p>",
-		"$x$":                       "<p>[i]</p>",
-		"costs $20 and $30.":        "<p>costs $20 and $30.</p>",
-		"$ x$ is not math":          "<p>$ x$ is not math</p>",
-		"$x $ is not math":          "<p>$x $ is not math</p>",
-		"$x$5 is not math":          "<p>$x$5 is not math</p>",
-		`$a\$b$ escapes`:            "<p>[i] escapes</p>",
-		"$x":                        "<p>$x</p>",
-		"$$":                        "<p>$$</p>",
-		"a $x\ny$ b":                "<p>a $x\ny$ b</p>",
-		"`$x$` in code":             "<p><code>$x$</code> in code</p>",
-		"bad $\\nosuch$ here":       `<p>bad [e:\nosuch] here</p>`,
-		"two $a$ and $b$":           "<p>two [i] and [i]</p>",
+		"a $x^2$ b":           "<p>a [i] b</p>",
+		"$x$":                 "<p>[i]</p>",
+		"costs $20 and $30.":  "<p>costs $20 and $30.</p>",
+		"$ x$ is not math":    "<p>$ x$ is not math</p>",
+		"$x $ is not math":    "<p>$x $ is not math</p>",
+		"$x$5 is not math":    "<p>$x$5 is not math</p>",
+		`$a\$b$ escapes`:      "<p>[i] escapes</p>",
+		"$x":                  "<p>$x</p>",
+		"$$":                  "<p>$$</p>",
+		"a $x\ny$ b":          "<p>a $x\ny$ b</p>",
+		"`$x$` in code":       "<p><code>$x$</code> in code</p>",
+		"bad $\\nosuch$ here": `<p>bad [e:\nosuch] here</p>`,
+		"two $a$ and $b$":     "<p>two [i] and [i]</p>",
 	} {
 		if got := prose(t, src); got != want {
 			t.Errorf("%q:\n got %q\nwant %q", src, got, want)
@@ -50,13 +50,13 @@ func TestMathInline(t *testing.T) {
 
 func TestMathDisplay(t *testing.T) {
 	for src, want := range map[string]string{
-		"$$x^2$$":                       "<p>[d]</p>",
-		"$$\n\\int_0^1 x\\,dx\n$$":       "<p>[d]</p>",
-		"$$\na\n\nb\n$$":                "<p>$$\na</p>\n<p>b\n$$</p>",
-		"$$ never closed\nstill open":   "<p>$$ never closed\nstill open</p>",
-		"before $$x$$ after":            "<p>before [d] after</p>",
-		"$$\nx\n$$ tail":                "<p>[d] tail</p>",
-		"$$\\nosuch$$":                  `<p>[e:\nosuch]</p>`,
+		"$$x^2$$":                     "<p>[d]</p>",
+		"$$\n\\int_0^1 x\\,dx\n$$":    "<p>[d]</p>",
+		"$$\na\n\nb\n$$":              "<p>$$\na</p>\n<p>b\n$$</p>",
+		"$$ never closed\nstill open": "<p>$$ never closed\nstill open</p>",
+		"before $$x$$ after":          "<p>before [d] after</p>",
+		"$$\nx\n$$ tail":              "<p>[d] tail</p>",
+		"$$\\nosuch$$":                `<p>[e:\nosuch]</p>`,
 	} {
 		if got := prose(t, src); got != want {
 			t.Errorf("%q:\n got %q\nwant %q", src, got, want)

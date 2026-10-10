@@ -1,3 +1,7 @@
+github.com/go-opentype/opentype v0.13.0 h1:q9K7IGDfwMP/ik51ZkwiYf6jbaqPfocvAIuojetd0UQ=
+github.com/go-opentype/opentype v0.13.0/go.mod h1:AOixevJf7XQaH7+WG+OMIOZEbYPXfMqklVk26Y6YTUU=
+github.com/go-tex/math v0.50.0 h1:YHJ3LYzS45zBoPKGBkZW4+LUQkOeHP30YWLsfXGZCpo=
+github.com/go-tex/math v0.50.0/go.mod h1:cPm5juijQkhFj1MCByLF8tOfZ+UswAGUPBh+Wy6+vbw=
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
 github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
 github.com/yuin/goldmark v1.8.6 h1:d0VcaP1sx9GkFVkoW+KtggpGi2KZ965i14b0+bDQST4=

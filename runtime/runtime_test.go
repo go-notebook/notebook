@@ -68,6 +68,19 @@ func TestBundle(t *testing.T) {
 		t.Errorf("Bundle(3.5) = %v", b)
 	}
 	c := &Cell{}
+	c.Result(2.5, nil)
+	if len(c.shown) != 1 || string(c.shown[0]["text/plain"]) != "2.5" {
+		t.Errorf("Result(2.5, nil) = %v", c.shown)
+	}
+	func() {
+		defer func() {
+			if p := recover(); p != "error: no" {
+				t.Errorf("Result with an error panicked with %v", p)
+			}
+		}()
+		c.Result(nil, errors.New("no"))
+	}()
+	c = &Cell{}
 	c.Show(1, nil, "a")
 	if len(c.shown) != 2 {
 		t.Errorf("Show kept %d displays, want 2 (nil is skipped)", len(c.shown))

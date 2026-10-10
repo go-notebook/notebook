@@ -48,6 +48,16 @@ func (c *Cell) Show(vs ...any) {
 	}
 }
 
+// Result shows v, the value of a call that also returned an error, or, when
+// err is not nil, fails the cell with it, so the cells that read this one do
+// not run on a value that is not there.
+func (c *Cell) Result(v any, err error) {
+	if err != nil {
+		panic(fmt.Sprintf("error: %v", err))
+	}
+	c.Show(v)
+}
+
 // Bundle returns the MIME bundle of a value: its own when it implements
 // Displayer (with text/plain added if missing), else its fmt %v text.
 func Bundle(v any) map[string][]byte {

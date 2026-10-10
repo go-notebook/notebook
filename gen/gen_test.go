@@ -59,6 +59,9 @@ func TestGenerate(t *testing.T) {
 		"r.Len()\n",
 		"println(\"void\")\n",
 		"fmt.Println\n",
+		"sc.ParseFloat(\"2.5\", 64)\n",
+		"fmt.Println(\"bytes, err\")\n",
+		"sc.ParseBool(\"true\")\n",
 	), imp)
 	for _, d := range p.Diags {
 		t.Errorf("diag: %s", d)
@@ -80,6 +83,9 @@ func TestGenerate(t *testing.T) {
 		"_k.Show(r.Len())",
 		"*/println(\"void\")\n",
 		"_k.Show(fmt.Println)",
+		"_k.Result(sc.ParseFloat(\"2.5\", 64))",
+		"*/fmt.Println(\"bytes, err\")\n",
+		"_k.Result(sc.ParseBool(\"true\"))",
 		"\"m\": &m",
 		"m, err =  twice(n), error(nil)",
 		"w, _ =  sc.Atoi",

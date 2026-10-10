@@ -57,11 +57,13 @@ The second run is a new process: `sum` comes back from the kernel's store, it is
 go install github.com/go-notebook/notebook/cmd/notebook@latest
 
 notebook run analysis.md     # run it, print each cell's results
-notebook html analysis.md    # run it, write analysis.html (no scripts, no external resources)
+notebook html analysis.md    # run it, write analysis.html (no scripts, no external resources; $\TeX$ math typeset by go-tex)
 notebook watch analysis.md   # run it on every save and keep analysis.html current
 ```
 
 Edit the `.md` in any editor; with `watch`, the page follows the file.
+
+[examples/spectrum.md](examples/spectrum.md) finds two tones in Gaussian noise with [go-ndarray](https://github.com/go-ndarray/ndarray): arrays, `fft.RFFT`, and a seeded generator that gives NumPy's numbers for the same seed.
 
 ## Cells
 
@@ -78,6 +80,7 @@ len(w) // the final expression is shown
 
 - Names defined at the top level are shared with every cell. Each name is defined by **one** cell, and a cell may not assign to another cell's variable. That is what makes the order a function of the code.
 - Names starting with `_`, and `err`, stay local to their cell.
+- A final call returning `(value, error)` shows the value; a non-nil error fails the cell.
 - A value with a `Display() map[string][]byte` method shows itself as HTML, SVG or PNG.
 - Errors point at the notebook's own lines. A panic stops the cells that read the failing one, and they say why.
 

@@ -28,7 +28,7 @@ y := sq(math.Pi)
 y
 ```
 
-Top-level `func`, `type` and `import` are declarations of the notebook. The rest is the cell's statements, run in order. The names a cell defines at the top level (`:=`, `var`, `const`, `func`, `type`) are notebook variables, readable from every cell. A final expression is the cell's display value; a call with several results (`fmt.Println`'s `n, err`) is run for its effect and not shown.
+Top-level `func`, `type` and `import` are declarations of the notebook. The rest is the cell's statements, run in order. The names a cell defines at the top level (`:=`, `var`, `const`, `func`, `type`) are notebook variables, readable from every cell. A final expression is the cell's display value. A call returning `(value, error)` shows the value, and a non-nil error fails the cell, so its readers do not run on a value that is not there. Other calls with several results, and `(int, error)` — the byte counts of `fmt.Println` and `Write` —, are run for their effect and not shown.
 
 Three rules make the order a function of the code, as in marimo:
 
@@ -60,6 +60,10 @@ This assumes a cell computes the same values from the same inputs. A cell that r
 
 What a cell prints, through `os.Stdout`, the `println` builtin or C code, is captured by pointing file descriptors 1 and 2 at a pipe for the duration of the cell. The protocol replies travel on a duplicate of the original standard output, so a cell can never forge one. Systems without `dup2` (Windows, js, wasip1) swap `os.Stdout` and `os.Stderr` instead, and do not capture `println`.
 
+### Math in prose
+
+`$...$` and `$$...$$` in prose are typeset by [go-tex/math](https://github.com/go-tex/math) into SVG glyph outlines: TeX's layout from the OpenType MATH table (STIX Two Math), with no MathJax, no script and no network, so the exported page stays static. An inline formula sits on the text's baseline (go-tex returns its depth). Dollar signs follow pandoc's rule, so "costs $20 and $30" stays text. A formula go-tex cannot typeset is shown as its source, marked, with the reason as a tooltip.
+
 ### Display
 
 `runtime.Displayer` is a MIME bundle: `Display() map[string][]byte` with `text/plain`, `text/html`, `image/svg+xml`, `image/png`... Values without one show their `%v`.
@@ -68,5 +72,4 @@ What a cell prints, through `os.Stdout`, the `println` builtin or C code, is cap
 
 - A Jupyter wire-protocol front end (JupyterLab, VS Code), and a go-widgets native and wasm UI.
 - Running independent branches of the graph concurrently.
-- Real LaTeX in prose through go-tex; for now `$...$` stays as text.
 - `MarshalBinary` on go-ndarray arrays, so that arrays are kept rather than volatile.

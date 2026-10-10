@@ -125,7 +125,10 @@ type cellAST struct {
 
 	display     ast.Expr
 	displayVoid bool
-	locals      map[string]string // private names a mixed := declares, with their types
+	// displayResult: the display is a (value, error) pair, shown with
+	// _k.Result — the value, or the error as the cell's failure.
+	displayResult bool
+	locals        map[string]string // private names a mixed := declares, with their types
 }
 
 const stmtPrefix = "package p;func _(){"
@@ -305,10 +308,14 @@ func (g *generator) infer(i int) {
 	if n := len(body); n > 0 && c.display != nil {
 		if es, ok := body[n-1].(*ast.ExprStmt); ok {
 			if tv, ok := info.Types[es.X]; ok {
-				// A call with several results (fmt.Println's n, err) is run
-				// for its effect: showing (25, <nil>) would only be noise.
-				_, multi := tv.Type.(*types.Tuple)
-				c.displayVoid = tv.IsVoid() || tv.IsType() || multi
+				// A call returning (value, error) shows the value, and fails
+				// the cell with a non-nil error. Other calls with several
+				// results, and (int, error) — the byte counts of
+				// fmt.Println and Write —, are run for their effect: showing
+				// (25, <nil>) would only be noise.
+				tup, multi := tv.Type.(*types.Tuple)
+				c.displayResult = multi && valueAndError(tup)
+				c.displayVoid = tv.IsVoid() || tv.IsType() || (multi && !c.displayResult)
 			} else {
 				// Untyped (an error the final check reports, or a builtin
 				// call without a value): do not wrap it.
@@ -317,6 +324,15 @@ func (g *generator) infer(i int) {
 		}
 	}
 	g.done = append(g.done, i)
+}
+
+// valueAndError reports whether a result tuple is (T, error) with T not
+// int.
+func valueAndError(t *types.Tuple) bool {
+	if t.Len() != 2 || !types.Identical(t.At(1).Type(), types.Universe.Lookup("error").Type()) {
+		return false
+	}
+	return !types.Identical(t.At(0).Type(), types.Typ[types.Int])
 }
 
 // typeString writes t for the program, or reports why it cannot.
@@ -587,7 +603,11 @@ func (g *generator) writeCell(b *strings.Builder, k int, lines bool) {
 	if n := len(c.stmts); n > 0 && !c.displayVoid {
 		if es, ok := c.stmts[n-1].(*ast.ExprStmt); ok {
 			s, e := c.off(es.Pos()), c.off(es.End())
-			edits = append(edits, edit{s, s, "_k.Show("}, edit{e, e, ")"})
+			show := "_k.Show("
+			if c.displayResult {
+				show = "_k.Result("
+			}
+			edits = append(edits, edit{s, s, show}, edit{e, e, ")"})
 		}
 	}
 	sort.SliceStable(edits, func(i, j int) bool { return edits[i].start < edits[j].start })

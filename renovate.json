@@ -1,0 +1,14 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>go-notebook/.github"],
+  "packageRules": [
+    {
+      "description": [
+        "Stay on goldmark v1. v2 is a rewrite (generic renderers, a new Node interface, extensions moved), not an upgrade a bot can apply: Renovate's PR rewrote html.go's imports but not math.go's extension and could not compile. The fleet's other Markdown code (go-richdoc/markdown) is on v1 too. Migrating is a deliberate piece of work, to be done by hand when v2 brings something we need."
+      ],
+      "matchPackageNames": ["github.com/yuin/goldmark"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ]
+}

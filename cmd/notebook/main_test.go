@@ -136,7 +136,7 @@ func TestWatch(t *testing.T) {
 	stop := make(chan struct{})
 	done := make(chan error)
 	html := filepath.Join(t.TempDir(), "w.html")
-	go func() { done <- watch(k, path, html, 10*time.Millisecond, out, stop) }()
+	go func() { done <- watch(k, path, 10*time.Millisecond, out, stop, toFile(path, html)) }()
 	waitFor(t, out, "2 of 2 cells ran")
 	// Change the file: the leaf runs again.
 	later := time.Now().Add(2 * time.Second)
@@ -156,7 +156,9 @@ func TestWatch(t *testing.T) {
 	// An unwritable page and an unreadable notebook.
 	out.Reset()
 	stop = make(chan struct{})
-	go func() { done <- watch(k, path, filepath.Join(path, "x.html"), 10*time.Millisecond, out, stop) }()
+	go func() {
+		done <- watch(k, path, 10*time.Millisecond, out, stop, toFile(path, filepath.Join(path, "x.html")))
+	}()
 	waitFor(t, out, "page: ")
 	close(stop)
 	<-done
@@ -164,10 +166,15 @@ func TestWatch(t *testing.T) {
 	stop = make(chan struct{})
 	t.Setenv("GOPROXY", "off")
 	broken := notebook(t, "```go\nimport \"example.invalid/x\"\nx.Y()\n```\n")
-	go func() { done <- watch(k, broken, html, 10*time.Millisecond, out, stop) }()
+	go func() { done <- watch(k, broken, 10*time.Millisecond, out, stop, toFile(broken, html)) }()
 	waitFor(t, out, "tidy")
 	close(stop)
 	<-done
+}
+
+// toFile is watch's page writer for the watch verb.
+func toFile(path, out string) func(*format.Notebook, *kernel.Report) error {
+	return func(nb *format.Notebook, rep *kernel.Report) error { return writeHTML(out, path, nb, rep) }
 }
 
 // syncBuffer is a buffer the watch loop writes while the test reads it.

@@ -93,7 +93,7 @@ len(w) // the final expression is shown
 
 `format` parses the Markdown and `analysis` builds the dependency graph from the syntax. `gen` writes the Go program, type-checking cell by cell to learn the types of shared variables. `kernel` compiles it into a worker, drives it through `runtime`, and keeps results and values under a hash of each cell's code and inputs. `export` writes the HTML page. The reasons for each choice, and what is not done yet, are in [docs/design.md](docs/design.md); the [documentation](https://go-notebook.github.io/docs/) covers the cell rules, the command and the kernel in more detail.
 
-It is part of an ecosystem with [go-ndarray](https://github.com/go-ndarray/ndarray) (NumPy-style arrays in thirteen dtypes, `numpy.fft`); go-plot will provide the figures.
+It is part of an ecosystem built for it: [go-ndarray](https://github.com/go-ndarray/ndarray) (N-dimensional arrays in thirteen dtypes, with FFT, linear algebra, and random numbers bit-identical to NumPy's for the same seed), [go-plot](https://github.com/go-plot/plot) (figures, with TeX labels), and, in progress, [go-numerics](https://github.com/go-numerics) (special functions, optimisation, integration), [go-statistics](https://github.com/go-statistics) and [go-dataframe](https://github.com/go-dataframe).
 
 ## License
 

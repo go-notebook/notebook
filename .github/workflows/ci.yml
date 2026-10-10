@@ -1,0 +1,114 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# The kernel tests build and run Go programs, so they need the go command
+# next to the test binary: they run in the native jobs, and are skipped
+# (-short) under qemu, where the rest of the suite still runs on each
+# architecture.
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+      - run: go version
+      # Not on Windows: its checkout converts line endings to CRLF.
+      - name: gofmt
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          unformatted=$(gofmt -l .)
+          [ -z "$unformatted" ] || { echo "::error::not gofmt-formatted:"; echo "$unformatted"; exit 1; }
+      - run: go vet ./...
+      - run: go build ./...
+      - name: Test + 100% coverage gate
+        shell: bash
+        run: |
+          COVERPKG=$(go list ./... | paste -sd, -)
+          go test -race -coverpkg="$COVERPKG" -coverprofile=cover.out ./...
+          go tool cover -func=cover.out | tail -n 25
+          cov=$(go tool cover -func=cover.out | tail -1 | awk '{print $3}' | tr -d '%')
+          echo "coverage: ${cov}%"
+          awk -v t="$cov" 'BEGIN { exit !(t+0 >= 100.0) }' || {
+            echo "::error::coverage ${cov}% < 100%"; exit 1; }
+
+  security:
+    name: govulncheck + fuzz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      - name: Fuzz the notebook format for 60 s
+        run: go test -run '^$' -fuzz FuzzRoundTrip -fuzztime 60s ./format
+
+  arch-native:
+    name: arch arm64
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+      - run: go vet ./... && go test ./...
+
+  arch-qemu:
+    name: arch ${{ matrix.goarch }} (qemu)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goarch: riscv64, qemu: qemu-riscv64-static }
+          - { goarch: loong64, qemu: qemu-loongarch64-static }
+          - { goarch: ppc64le, qemu: qemu-ppc64le-static }
+          - { goarch: s390x,   qemu: qemu-s390x-static }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+      - run: sudo apt-get update && sudo apt-get install -y qemu-user-static
+      - name: Vet + test under qemu (${{ matrix.goarch }})
+        run: |
+          GOOS=linux GOARCH=${{ matrix.goarch }} go vet ./...
+          GOARCH=${{ matrix.goarch }} go test -short -exec=${{ matrix.qemu }} ./...
+
+  cross:
+    name: compile on every target
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.2'
+      - name: go test -c for every GOOS/GOARCH
+        shell: bash
+        run: |
+          fail=0
+          for t in $(go tool dist list); do
+            os=${t%/*}; arch=${t#*/}
+            case $os in android|ios) continue ;; esac
+            for p in $(go list ./...); do
+              GOOS=$os GOARCH=$arch go test -c -o /dev/null "$p" >/dev/null 2>err.txt || { echo "::error::$t $p"; cat err.txt; fail=1; }
+            done
+          done
+          exit $fail

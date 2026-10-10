@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-rouge/rouge"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 
@@ -38,7 +39,7 @@ func HTML(w io.Writer, title string, nb *format.Notebook, rep *kernel.Report) er
 			continue
 		}
 		fmt.Fprintf(&b, `<section class="cell" id="cell-%d"><pre class="code"><code>%s</code></pre>`,
-			code, html.EscapeString(strings.TrimRight(c.Source, "\n")))
+			code, highlight(strings.TrimRight(c.Source, "\n")))
 		if rep != nil && code < len(rep.Results) {
 			writeResult(&b, rep.Results[code])
 		}
@@ -93,6 +94,14 @@ func writeBundle(b *bytes.Buffer, d map[string][]byte) {
 	}
 }
 
+// highlight colours Go source with go-rouge's Go lexer (Rouge's short
+// classes: k keyword, s string, m number, c comment, n name ...), escaped
+// as HTML.
+func highlight(src string) string {
+	h, _ := rouge.Highlight(src, "go", "html") // fails only for an unknown lexer or formatter
+	return h
+}
+
 // inlineSVG drops what a standalone SVG file starts with but an SVG inside
 // HTML must not: the XML declaration and a DOCTYPE.
 func inlineSVG(svg []byte) []byte {
@@ -107,14 +116,22 @@ const page = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>%s</title>
 <style>
-:root { --bg: #fdfdfc; --fg: #1d1f21; --muted: #6a6f75; --code: #f3f4f1; --line: #e2e3df; --err: #b3261e; --accent: #00758f; }
-@media (prefers-color-scheme: dark) { :root { --bg: #16181a; --fg: #e6e6e3; --muted: #9a9fa5; --code: #202326; --line: #2e3236; --err: #f2b8b5; --accent: #5fc1d6; } }
+:root { --bg: #fdfdfc; --fg: #1d1f21; --muted: #6a6f75; --code: #f3f4f1; --line: #e2e3df; --err: #b3261e; --accent: #00758f;
+  --hl-key: #8f2f8a; --hl-str: #2f7d32; --hl-num: #a3541a; --hl-com: #7a7f86; --hl-fn: #1f5fa8; --hl-type: #00758f; }
+@media (prefers-color-scheme: dark) { :root { --bg: #16181a; --fg: #e6e6e3; --muted: #9a9fa5; --code: #202326; --line: #2e3236; --err: #f2b8b5; --accent: #5fc1d6;
+  --hl-key: #d49bd0; --hl-str: #9ccc8f; --hl-num: #e0a671; --hl-com: #8a9098; --hl-fn: #8fb8ec; --hl-type: #5fc1d6; } }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, sans-serif; }
 main { max-width: 52rem; margin: 0 auto; padding: 2rem 1rem 4rem; }
 a { color: var(--accent); }
 pre { overflow-x: auto; padding: .75rem 1rem; border-radius: 6px; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cell { margin: 1.25rem 0; }
 .code { background: var(--code); border: 1px solid var(--line); margin: 0; }
+.code .k, .code .kd, .code .kn, .code .kr, .code .kc { color: var(--hl-key); }
+.code .kt, .code .nc { color: var(--hl-type); }
+.code .s, .code .s1, .code .s2, .code .sb, .code .sc, .code .se, .code .dl { color: var(--hl-str); }
+.code .m, .code .mi, .code .mf, .code .mh, .code .mo, .code .mb { color: var(--hl-num); }
+.code .c, .code .c1, .code .cm, .code .cp { color: var(--hl-com); font-style: italic; }
+.code .nf, .code .nb, .code .bp { color: var(--hl-fn); }
 .out { margin: .25rem 0 0; border-left: 3px solid var(--line); border-radius: 0; }
 .err { margin: .25rem 0 0; color: var(--err); border-left: 3px solid var(--err); border-radius: 0; }
 .display { margin: .5rem 0; overflow-x: auto; }

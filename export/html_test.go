@@ -32,7 +32,7 @@ func TestHTML(t *testing.T) {
 		"<title>nb &lt;1&gt;</title>",
 		"<h1>Title <!-- raw HTML omitted --></h1>",
 		"<em>prose</em>",
-		"x := 1 &lt; 2",
+		`<span class="n">x</span> <span class="o">:=</span> <span class="m">1</span> <span class="o">&lt;</span> <span class="m">2</span>`,
 		`<pre class="out">out &lt;b&gt;`,
 		`<div class="display"><svg id=s></svg>`,
 		`<div class="display"><svg id=bare></svg>`,

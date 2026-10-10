@@ -83,7 +83,7 @@ func writeResult(b *bytes.Buffer, r kernel.Result) {
 func writeBundle(b *bytes.Buffer, d map[string][]byte) {
 	switch {
 	case d["image/svg+xml"] != nil:
-		b.Write(d["image/svg+xml"])
+		b.Write(inlineSVG(d["image/svg+xml"]))
 	case d["image/png"] != nil:
 		fmt.Fprintf(b, `<img alt="" src="data:image/png;base64,%s">`, base64.StdEncoding.EncodeToString(d["image/png"]))
 	case d["text/html"] != nil:
@@ -91,6 +91,15 @@ func writeBundle(b *bytes.Buffer, d map[string][]byte) {
 	default:
 		fmt.Fprintf(b, `<pre>%s</pre>`, html.EscapeString(string(d["text/plain"])))
 	}
+}
+
+// inlineSVG drops what a standalone SVG file starts with but an SVG inside
+// HTML must not: the XML declaration and a DOCTYPE.
+func inlineSVG(svg []byte) []byte {
+	if i := bytes.Index(svg, []byte("<svg")); i > 0 {
+		return svg[i:]
+	}
+	return svg
 }
 
 const page = `<!doctype html>
@@ -111,6 +120,10 @@ pre { overflow-x: auto; padding: .75rem 1rem; border-radius: 6px; font: 14px/1.5
 .display { margin: .5rem 0; overflow-x: auto; }
 .display svg, .display img { max-width: 100%%; height: auto; }
 .took, footer { color: var(--muted); font-size: 13px; }
+table { border-collapse: collapse; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+th, td { padding: .2rem .6rem; border-bottom: 1px solid var(--line); text-align: right; }
+thead th, tbody th { color: var(--muted); font-weight: normal; }
+caption { caption-side: top; text-align: left; color: var(--muted); padding-bottom: .25rem; }
 .math svg { display: inline; fill: currentColor; }
 .math.display { display: block; text-align: center; margin: 1rem 0; overflow-x: auto; }
 .math-error { color: var(--err); }

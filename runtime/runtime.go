@@ -59,12 +59,14 @@ func (c *Cell) Result(v any, err error) {
 }
 
 // Bundle returns the MIME bundle of a value: its own when it implements
-// Displayer (with text/plain added if missing), else its fmt %v text.
+// Displayer, else its fmt %v text. A Displayer without text/plain (a figure
+// that is only SVG and PNG) gets its type, <*plot.Figure>, rather than the %v
+// of its innards.
 func Bundle(v any) map[string][]byte {
 	if d, ok := v.(Displayer); ok {
 		b := d.Display()
 		if _, ok := b["text/plain"]; !ok {
-			b["text/plain"] = []byte(fmt.Sprint(v))
+			b["text/plain"] = []byte(fmt.Sprintf("<%T>", v))
 		}
 		return b
 	}

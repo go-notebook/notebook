@@ -59,8 +59,30 @@ func (k *Kernel) prepareModule(paths []string) error {
 	if err != nil {
 		return err
 	}
+	toolchain, err := goVersion(k)
+	if err != nil {
+		return err
+	}
+	sums, _ := os.ReadFile(filepath.Join(k.opt.Dir, "go.sum")) // none when only the standard library is used
 	k.types, k.imports = imp, sig
+	k.env = keyEnv{toolchain: toolchain, sums: string(sums)}
 	return nil
+}
+
+// keyEnv is what, besides the code, decides what a cell computes: the Go
+// toolchain that compiles it and the versions of the modules it links.
+type keyEnv struct {
+	toolchain string // go env GOVERSION
+	sums      string // the work module's go.sum
+}
+
+// goVersion asks the go command its version; a seam for tests.
+var goVersion = func(k *Kernel) (string, error) {
+	out, err := k.goCmd("env", "GOVERSION").Output()
+	if err != nil {
+		return "", fmt.Errorf("go env GOVERSION: %v", err)
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // goMod writes the work module's go.mod.

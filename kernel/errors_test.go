@@ -200,3 +200,47 @@ func TestSaveFailure(t *testing.T) {
 		t.Error("saved under a file")
 	}
 }
+
+// TestKeysFollowVersions changes the toolchain and the module sums under a
+// kernel: cells re-run when what they link changed, and only then.
+func TestKeysFollowVersions(t *testing.T) {
+	k := newKernel(t)
+	cells := codes("x := 2\n", "import \"golang.org/x/sync/errgroup\"\nvar g errgroup.Group\n_ = g\ny := x * 2\ny\n")
+	if _, err := k.Run(cells); err != nil {
+		t.Fatal(err)
+	}
+	// Another go.sum (a dependency upgraded): the cell using a module runs,
+	// the standard-library one does not.
+	k.env.sums += "\nexample.com/m v1.0.1 h1:x"
+	rep, _ := k.Run(cells)
+	if got := ran(rep); got != ".R" {
+		t.Errorf("go.sum change: %s", got)
+	}
+	// Another toolchain: everything runs.
+	k.env.toolchain = "go9.9"
+	rep, _ = k.Run(cells)
+	if got := ran(rep); got != "RR" {
+		t.Errorf("toolchain change: %s", got)
+	}
+}
+
+func TestGoVersionFailure(t *testing.T) {
+	k := newKernel(t)
+	fail := errors.New("no go")
+	seam(t, &goVersion, func(*Kernel) (string, error) { return "", fail })
+	if _, err := k.Run(codes("x := 1\n")); !errors.Is(err, fail) {
+		t.Errorf("go version failure: %v", err)
+	}
+}
+
+func TestGoVersion(t *testing.T) {
+	k := newKernel(t)
+	v, err := goVersion(k)
+	if err != nil || !strings.HasPrefix(v, "go1.") {
+		t.Errorf("goVersion = %q %v", v, err)
+	}
+	k.opt.Dir = filepath.Join(t.TempDir(), "missing")
+	if _, err := goVersion(k); err == nil {
+		t.Error("go env in a missing directory succeeded")
+	}
+}

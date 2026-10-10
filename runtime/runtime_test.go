@@ -58,7 +58,7 @@ type exported struct {
 }
 
 func TestBundle(t *testing.T) {
-	if b := Bundle(shown{}); string(b["text/html"]) != "<b>x</b>" || string(b["text/plain"]) != "{}" {
+	if b := Bundle(shown{}); string(b["text/html"]) != "<b>x</b>" || string(b["text/plain"]) != "<runtime.shown>" {
 		t.Errorf("Bundle(shown) = %v", b)
 	}
 	if b := Bundle(full{}); string(b["text/plain"]) != "own text" {

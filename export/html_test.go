@@ -15,7 +15,8 @@ func TestHTML(t *testing.T) {
 	nb := format.Parse("# Title <x>\n\nSome *prose*.\n\n```go\nx := 1 < 2\n```\n\n```go\ny\n```\n\n```go\nz\n```\n")
 	rep := &kernel.Report{Build: 1500 * time.Millisecond, Results: []kernel.Result{
 		{Cell: 0, Output: "out <b>\n", Ran: true, Took: time.Millisecond, Display: []map[string][]byte{
-			{"image/svg+xml": []byte("<svg id=s></svg>")},
+			{"image/svg+xml": []byte("<?xml version=\"1.0\"?>\n<!DOCTYPE svg>\n<svg id=s></svg>")},
+			{"image/svg+xml": []byte("<svg id=bare></svg>")},
 			{"image/png": []byte{1, 2, 3}},
 			{"text/html": []byte("<table></table>")},
 			{"text/plain": []byte("a < b")},
@@ -33,7 +34,8 @@ func TestHTML(t *testing.T) {
 		"<em>prose</em>",
 		"x := 1 &lt; 2",
 		`<pre class="out">out &lt;b&gt;`,
-		"<svg id=s></svg>",
+		`<div class="display"><svg id=s></svg>`,
+		`<div class="display"><svg id=bare></svg>`,
 		"data:image/png;base64,AQID",
 		"<table></table>",
 		"<pre>a &lt; b</pre>",

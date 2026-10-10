@@ -15,6 +15,7 @@ import (
 	"github.com/go-ndarray/ndarray"
 	"github.com/go-ndarray/ndarray/fft"
 	"github.com/go-ndarray/ndarray/random"
+	"github.com/go-plot/plot"
 )
 
 const (
@@ -64,4 +65,26 @@ far, _ := masked.Abs().Greater(ndarray.Scalar(5.0))
 rest, _ := ndarray.Where(far, power, ndarray.Scalar(0.0))
 second, _ := rest.ArgMax()
 freqs.At(second)
+```
+
+The signal and its spectrum, drawn by [go-plot](https://github.com/go-plot/plot).
+
+```go
+fig, axs := plot.Subplots(2, 1, plot.FigSize(7, 5))
+top, bottom := axs[0][0], axs[1][0]
+
+_t, _ := t.Slice(ndarray.To(250))
+_x, _ := x.Slice(ndarray.To(250))
+_clean, _ := clean.Slice(ndarray.To(250))
+top.Plot(_t, _x, plot.Label("noisy"))
+top.Plot(_t, _clean, plot.Label("clean"))
+top.SetXLabel(`time $t$ (s)`)
+top.Legend()
+
+bottom.Plot(freqs, power)
+bottom.SetXLim(0, 200)
+bottom.SetXLabel(`frequency $f$ (Hz)`)
+bottom.SetYLabel(`$|X_k|$`)
+fig.TightLayout()
+fig
 ```

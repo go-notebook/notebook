@@ -63,7 +63,7 @@ notebook watch analysis.md   # run it on every save and keep analysis.html curre
 
 Edit the `.md` in any editor; with `watch`, the page follows the file.
 
-[examples/spectrum.md](examples/spectrum.md) finds two tones in Gaussian noise with [go-ndarray](https://github.com/go-ndarray/ndarray): arrays, `fft.RFFT`, and a seeded generator that gives NumPy's numbers for the same seed.
+[examples/spectrum.md](examples/spectrum.md) finds two tones in Gaussian noise with [go-ndarray](https://github.com/go-ndarray/ndarray) (arrays, `fft.RFFT`, a seeded generator that gives NumPy's numbers for the same seed) and draws the signal and its spectrum with [go-plot](https://github.com/go-plot/plot).
 
 ## Cells
 

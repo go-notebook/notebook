@@ -1,10 +1,15 @@
+<p align="center"><img src="https://raw.githubusercontent.com/go-notebook/brand/main/social/go-notebook.png" alt="go-notebook/notebook" width="720"></p>
+
 # notebook — go-notebook
 
+[![Docs](https://img.shields.io/badge/docs-hugo%20%2B%20hextra-047857)](https://go-notebook.github.io/docs/)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.27.2%2B-00ADD8)](https://go.dev/dl/)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](.github/workflows/ci.yml)
 
 **Go notebooks with native speed, kept values and a reproducible order.**
+
+🌐 **[Website](https://go-notebook.github.io)** · 📚 **[Documentation](https://go-notebook.github.io/docs/)**
 
 A notebook is a Markdown file whose ` ```go ` blocks are cells. The kernel:
 
@@ -86,7 +91,7 @@ len(w) // the final expression is shown
 
 ## How it works
 
-`format` parses the Markdown and `analysis` builds the dependency graph from the syntax. `gen` writes the Go program, type-checking cell by cell to learn the types of shared variables. `kernel` compiles it into a worker, drives it through `runtime`, and keeps results and values under a hash of each cell's code and inputs. `export` writes the HTML page. The reasons for each choice, and what is not done yet, are in [docs/design.md](docs/design.md).
+`format` parses the Markdown and `analysis` builds the dependency graph from the syntax. `gen` writes the Go program, type-checking cell by cell to learn the types of shared variables. `kernel` compiles it into a worker, drives it through `runtime`, and keeps results and values under a hash of each cell's code and inputs. `export` writes the HTML page. The reasons for each choice, and what is not done yet, are in [docs/design.md](docs/design.md); the [documentation](https://go-notebook.github.io/docs/) covers the cell rules, the command and the kernel in more detail.
 
 It is part of an ecosystem with [go-ndarray](https://github.com/go-ndarray/ndarray) (NumPy-style arrays in thirteen dtypes, `numpy.fft`); go-plot will provide the figures.
 

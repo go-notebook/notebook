@@ -28,7 +28,7 @@ y := sq(math.Pi)
 y
 ```
 
-Top-level `func`, `type` and `import` are declarations of the notebook. The rest is the cell's statements, run in order. The names a cell defines at the top level (`:=`, `var`, `const`, `func`, `type`) are notebook variables, readable from every cell. A final expression is the cell's display value; a call with several results (`fmt.Println`'s `n, err`) is run for its effect and not shown.
+Top-level `func`, `type` and `import` are declarations of the notebook. The rest is the cell's statements, run in order. The names a cell defines at the top level (`:=`, `var`, `const`, `func`, `type`) are notebook variables, readable from every cell. A final expression is the cell's display value. A call returning `(value, error)` shows the value, and a non-nil error fails the cell, so its readers do not run on a value that is not there. Other calls with several results, and `(int, error)` — the byte counts of `fmt.Println` and `Write` —, are run for their effect and not shown.
 
 Three rules make the order a function of the code, as in marimo:
 

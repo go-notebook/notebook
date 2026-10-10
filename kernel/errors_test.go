@@ -244,3 +244,23 @@ func TestGoVersion(t *testing.T) {
 		t.Error("go env in a missing directory succeeded")
 	}
 }
+
+// TestResultDisplay: a final (value, error) call shows its value, and an
+// error fails the cell and blocks its readers.
+func TestResultDisplay(t *testing.T) {
+	k := newKernel(t)
+	rep, err := k.Run(codes(
+		"import \"strconv\"\nstrconv.ParseFloat(\"2.5\", 64)\n",
+		"v := 1\nstrconv.ParseFloat(\"x\", 64)\n",
+		"w := v + 1\nw\n",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shown(rep.Results[0]) != "2.5" {
+		t.Errorf("value shown: %+v", rep.Results[0])
+	}
+	if !strings.Contains(rep.Results[1].Error, "invalid syntax") || !strings.Contains(rep.Results[2].Error, "cell 1 failed") {
+		t.Errorf("error: %q / %q", rep.Results[1].Error, rep.Results[2].Error)
+	}
+}

@@ -34,8 +34,7 @@ t = t.DivScalar(rate)
 s1 := t.MulScalar(2 * math.Pi * f1).Sin()
 s2 := t.MulScalar(2 * math.Pi * f2).Sin().MulScalar(0.5)
 clean, _ := s1.Add(s2)
-_head, _ := clean.Slice(ndarray.To(5))
-_head
+clean.Slice(ndarray.To(5))
 ```
 
 Noise from a seeded generator, so the notebook gives the same numbers on every run (and NumPy's numbers for `default_rng(7)`).
@@ -43,8 +42,7 @@ Noise from a seeded generator, so the notebook gives the same numbers on every r
 ```go
 noise, _ := random.DefaultRNG(7).Normal(0, 2, n)
 x, _ := clean.Add(noise)
-_first, _ := x.Slice(ndarray.To(5))
-_first
+x.Slice(ndarray.To(5))
 ```
 
 The spectrum. The noise is four times the weaker tone's amplitude, yet both peaks stand out.

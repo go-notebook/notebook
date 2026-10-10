@@ -80,6 +80,7 @@ len(w) // the final expression is shown
 
 - Names defined at the top level are shared with every cell. Each name is defined by **one** cell, and a cell may not assign to another cell's variable. That is what makes the order a function of the code.
 - Names starting with `_`, and `err`, stay local to their cell.
+- A final call returning `(value, error)` shows the value; a non-nil error fails the cell.
 - A value with a `Display() map[string][]byte` method shows itself as HTML, SVG or PNG.
 - Errors point at the notebook's own lines. A panic stops the cells that read the failing one, and they say why.
 

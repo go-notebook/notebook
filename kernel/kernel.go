@@ -94,6 +94,7 @@ type Kernel struct {
 	results map[string]Result // by cell key
 	values  map[string]value  // by variable
 	types   *importer
+	env     keyEnv
 }
 
 // value is a kept variable: its encoding, or nil if it is volatile, and the
@@ -155,7 +156,7 @@ func (k *Kernel) Run(cells []gen.Code) (*Report, error) {
 		}
 	}
 	rep.Build = time.Since(start)
-	k.keys = cellKeys(cells, prog)
+	k.keys = cellKeys(cells, prog, k.env)
 	k.execute(prog, rep, nil)
 	return rep, nil
 }
@@ -318,9 +319,11 @@ func (k *Kernel) died(err error) runtime.Reply {
 }
 
 // cellKeys computes each cell's key from its source, the import paths of
-// the packages it refers to, and the keys of the cells it reads. An import
-// another cell adds or drops does not change it.
-func cellKeys(cells []gen.Code, prog *gen.Program) []string {
+// the packages it refers to, the Go toolchain, the module versions when it
+// uses a package outside the standard library, and the keys of the cells it
+// reads. An import another cell adds or drops does not change it; a go
+// version change, or a dependency upgrade, does.
+func cellKeys(cells []gen.Code, prog *gen.Program, env keyEnv) []string {
 	all := map[string]string{} // package name -> path, over every cell
 	for _, c := range prog.Graph.Cells {
 		for n, p := range c.Imports {
@@ -342,13 +345,30 @@ func cellKeys(cells []gen.Code, prog *gen.Program) []string {
 		sort.Strings(pkgs)
 		h := sha256.New()
 		// The cell's position is not part of it: moving a cell runs nothing.
-		fmt.Fprintf(h, "%s\x00%s\x00", cells[i].Source, strings.Join(pkgs, ","))
+		fmt.Fprintf(h, "%s\x00%s\x00%s\x00", cells[i].Source, strings.Join(pkgs, ","), env.toolchain)
+		if !allStandard(pkgs) {
+			// Any module could be behind any non-standard package,
+			// transitively: the whole go.sum is the honest summary.
+			fmt.Fprintf(h, "%s\x00", env.sums)
+		}
 		for _, d := range prog.Graph.Deps[i] {
 			fmt.Fprintf(h, "%s\x00", keys[d])
 		}
 		keys[i] = hex.EncodeToString(h.Sum(nil))
 	}
 	return keys
+}
+
+// allStandard reports whether every path is in the standard library, whose
+// first element has no dot.
+func allStandard(paths []string) bool {
+	for _, p := range paths {
+		first, _, _ := strings.Cut(p, "/")
+		if strings.Contains(first, ".") {
+			return false
+		}
+	}
+	return true
 }
 
 // importPaths returns the sorted import paths of the cells.

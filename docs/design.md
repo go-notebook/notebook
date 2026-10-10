@@ -48,7 +48,7 @@ A variable whose type cannot be written outside its package (an unexported type)
 
 The kernel compiles the program into a worker process. Go's build cache makes rebuilding after a one-cell edit cost about a tenth of a second here. The kernel then does the least work that brings the results up to date:
 
-- **A cell's key** is a hash of its source, the import paths of the packages it refers to, and the keys of the cells it reads. Its position is not part of it, so moving cells runs nothing; neither does an import another cell adds.
+- **A cell's key** is a hash of its source, the import paths of the packages it refers to, the Go toolchain's version, the work module's `go.sum` when the cell uses a package outside the standard library, and the keys of the cells it reads. Its position is not part of it, so moving cells runs nothing; neither does an import another cell adds. Upgrading Go, or a dependency, runs again what it could change.
 - **An unchanged key keeps its result.** After a rebuild, the variables the cell made are handed to the new worker, not computed again.
 - **Values are encoded** with their own `MarshalBinary` when they have one, and with gob when every field they can hold is exported (gob would silently drop the others). Anything else is **volatile**: its cell runs again, but only when a cell that reads it has to run.
 - **Results and values are kept on disk** in the work directory, so a new kernel, or the next `notebook run`, starts where the last one stopped.
@@ -73,4 +73,3 @@ What a cell prints, through `os.Stdout`, the `println` builtin or C code, is cap
 - A Jupyter wire-protocol front end (JupyterLab, VS Code), and a go-widgets native and wasm UI.
 - Running independent branches of the graph concurrently.
 - `MarshalBinary` on go-ndarray arrays, so that arrays are kept rather than volatile.
-- Module versions in the cell key (today a `go get -u` does not invalidate results).

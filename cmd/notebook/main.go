@@ -4,6 +4,7 @@
 //	notebook run analysis.md            run it, print each cell's results
 //	notebook html analysis.md           run it, write analysis.html
 //	notebook watch analysis.md          run it again on every save, keeping analysis.html current
+//	notebook serve analysis.md          the same, shown live at http://127.0.0.1:8888
 //
 // Results are kept between invocations in a work directory under the user's
 // cache directory, so a second run only runs the cells that changed.
@@ -37,11 +38,12 @@ func main() {
 	}
 }
 
-const usage = `usage: notebook run|html|watch [flags] notebook.md
+const usage = `usage: notebook run|html|watch|serve [flags] notebook.md
 
   run    run the notebook and print each cell's results
   html   run it and write the results as a page next to it (or -o)
   watch  run it again every time the file changes, keeping the page current
+  serve  run it again every time the file changes, showing it live in a browser (-addr)
 `
 
 // run is the command, on explicit streams.
@@ -55,7 +57,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 	out := fs.String("o", "", "the HTML file to write (html, watch)")
 	work := fs.String("work", "", "the work directory (default: under the user cache directory)")
 	src := fs.String("runtime-src", "", "use the go-notebook source tree at this path instead of a released runtime")
-	interval := fs.Duration("interval", 300*time.Millisecond, "how often watch looks at the file")
+	interval := fs.Duration("interval", 300*time.Millisecond, "how often watch and serve look at the file")
+	addr := fs.String("addr", "127.0.0.1:8888", "where serve listens")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -90,7 +93,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "wrote %s\n", *out)
 		return failed(rep)
 	case "watch":
-		return watch(k, path, *out, *interval, stdout, stopWatch)
+		page := func(nb *format.Notebook, rep *kernel.Report) error { return writeHTML(*out, path, nb, rep) }
+		return watch(k, path, *interval, stdout, stopWatch, page)
+	case "serve":
+		return serve(k, path, *addr, *interval, stdout, stopWatch)
 	}
 	return errors.New(usage)
 }
@@ -221,16 +227,21 @@ func indent(s string) string {
 	return "   " + strings.ReplaceAll(s, "\n", "\n   ") + "\n"
 }
 
-// writeHTML writes the page.
+// writeHTML writes the page. A nil notebook (the run itself failed) writes
+// nothing.
 func writeHTML(out, path string, nb *format.Notebook, rep *kernel.Report) error {
+	if nb == nil {
+		return nil
+	}
 	var b bytes.Buffer
 	_ = export.HTML(&b, filepath.Base(path), nb, rep) // a buffer does not fail
 	return os.WriteFile(out, b.Bytes(), 0o644)
 }
 
 // watch runs the notebook whenever its modification time changes, until stop
-// is closed (never, from the command line).
-func watch(k *kernel.Kernel, path, out string, interval time.Duration, w io.Writer, stop <-chan struct{}) error {
+// is closed (never, from the command line), and hands every result to page.
+func watch(k *kernel.Kernel, path string, interval time.Duration, w io.Writer, stop <-chan struct{},
+	page func(*format.Notebook, *kernel.Report) error) error {
 	var last time.Time
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
@@ -241,6 +252,7 @@ func watch(k *kernel.Kernel, path, out string, interval time.Duration, w io.Writ
 			switch {
 			case err != nil:
 				fmt.Fprintf(w, "%s  %v\n", time.Now().Format("15:04:05"), err)
+				_ = page(nil, &kernel.Report{Diags: []gen.Diag{{Cell: -1, Msg: err.Error()}}})
 			default:
 				ran := 0
 				for _, r := range rep.Results {
@@ -252,7 +264,7 @@ func watch(k *kernel.Kernel, path, out string, interval time.Duration, w io.Writ
 				if e := failed(rep); e != nil {
 					status = e.Error()
 				}
-				if err := writeHTML(out, path, nb, rep); err != nil {
+				if err := page(nb, rep); err != nil {
 					status = "page: " + err.Error()
 				}
 				fmt.Fprintf(w, "%s  %d of %d cells ran, build %s: %s\n", time.Now().Format("15:04:05"),

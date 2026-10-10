@@ -22,7 +22,7 @@ import (
 	"github.com/go-notebook/notebook/kernel"
 )
 
-var md = goldmark.New(goldmark.WithExtensions(extension.GFM, extension.Footnote))
+var md = goldmark.New(goldmark.WithExtensions(extension.GFM, extension.Footnote, mathExtension{}))
 
 // HTML writes the page. results holds one entry per code cell, in order; a
 // nil report renders the notebook without results.
@@ -111,5 +111,8 @@ pre { overflow-x: auto; padding: .75rem 1rem; border-radius: 6px; font: 14px/1.5
 .display { margin: .5rem 0; overflow-x: auto; }
 .display svg, .display img { max-width: 100%%; height: auto; }
 .took, footer { color: var(--muted); font-size: 13px; }
+.math svg { display: inline; fill: currentColor; }
+.math.display { display: block; text-align: center; margin: 1rem 0; overflow-x: auto; }
+.math-error { color: var(--err); }
 </style></head><body><main>
 `

@@ -57,7 +57,7 @@ The second run is a new process: `sum` comes back from the kernel's store, it is
 go install github.com/go-notebook/notebook/cmd/notebook@latest
 
 notebook run analysis.md     # run it, print each cell's results
-notebook html analysis.md    # run it, write analysis.html (no scripts, no external resources)
+notebook html analysis.md    # run it, write analysis.html (no scripts, no external resources; $\TeX$ math typeset by go-tex)
 notebook watch analysis.md   # run it on every save and keep analysis.html current
 ```
 

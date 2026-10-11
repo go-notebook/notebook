@@ -18,7 +18,7 @@ func prose(t *testing.T, src string) string {
 		t.Fatal(err)
 	}
 	s := b.String()
-	s = s[strings.Index(s, `<section class="prose">`)+len(`<section class="prose">`):]
+	s = s[strings.Index(s, `<section class="prose" data-i="0">`)+len(`<section class="prose" data-i="0">`):]
 	s = s[:strings.Index(s, "</section>")]
 	s = regexp.MustCompile(`(?s)<span class="math" style="vertical-align:-[0-9.]+px"><svg.*?</svg></span>`).ReplaceAllString(s, "[i]")
 	s = regexp.MustCompile(`(?s)<span class="math display"><svg.*?</svg></span>`).ReplaceAllString(s, "[d]")

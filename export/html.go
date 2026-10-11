@@ -31,15 +31,15 @@ func HTML(w io.Writer, title string, nb *format.Notebook, rep *kernel.Report) er
 	var b bytes.Buffer
 	fmt.Fprintf(&b, page, html.EscapeString(title))
 	code := 0
-	for _, c := range nb.Cells {
+	for i, c := range nb.Cells {
 		if c.Kind == format.Prose {
-			b.WriteString(`<section class="prose">`)
+			fmt.Fprintf(&b, `<section class="prose" data-i="%d">`, i)
 			_ = md.Convert([]byte(c.Source), &b) // fails only on a write error; b is a buffer
 			b.WriteString("</section>\n")
 			continue
 		}
-		fmt.Fprintf(&b, `<section class="cell" id="cell-%d"><pre class="code"><code>%s</code></pre>`,
-			code, highlight(strings.TrimRight(c.Source, "\n")))
+		fmt.Fprintf(&b, `<section class="cell" id="cell-%d" data-i="%d"><pre class="code"><code>%s</code></pre>`,
+			code, i, highlight(strings.TrimRight(c.Source, "\n")))
 		if rep != nil && code < len(rep.Results) {
 			writeResult(&b, rep.Results[code])
 		}

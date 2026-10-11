@@ -15,7 +15,7 @@ import (
 )
 
 func TestLiveHandler(t *testing.T) {
-	l := newLive()
+	l := newLive(newEditor(filepath.Join(t.TempDir(), "nb.md")))
 	srv := httptest.NewServer(l)
 	defer srv.Close()
 
@@ -94,9 +94,25 @@ func TestServe(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if !strings.Contains(string(body), "<h1>Demo</h1>") || !strings.Contains(string(body), "EventSource") {
+	if !strings.Contains(string(body), "<h1>Demo</h1>") || !strings.Contains(string(body), "EventSource") ||
+		!strings.Contains(string(body), "X-Notebook-Token") {
 		t.Errorf("served page:\n%s", body)
 	}
+	// Editing from the page rewrites the notebook, and the watch loop runs
+	// the change: the leaf cell shows 48 instead of 42.
+	tok := regexp.MustCompile(`const token = "([0-9a-f]{32})"`).FindStringSubmatch(string(body))
+	if tok == nil {
+		t.Fatal("no token in the page")
+	}
+	req, _ := http.NewRequest("POST", url+"source/3", strings.NewReader("x * 8"))
+	req.Header.Set("X-Notebook-Token", tok[1])
+	if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("edit: %v %v", resp, err)
+	}
+	if b, _ := os.ReadFile(path); !strings.Contains(string(b), "```go\nx * 8\n```") {
+		t.Errorf("notebook after edit:\n%s", b)
+	}
+	waitFor(t, out, "1 of 2 cells ran")
 	// A notebook that cannot run at all is shown as an error page.
 	t.Setenv("GOPROXY", "off")
 	later := time.Now().Add(2 * time.Second)

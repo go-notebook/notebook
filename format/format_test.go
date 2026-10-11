@@ -107,3 +107,24 @@ func FuzzRoundTrip(f *testing.F) {
 		}
 	})
 }
+
+func TestSetSource(t *testing.T) {
+	nb := Parse("# T\n\n```go\nx := 1\n```\n\n~~~go name=a\ny := 2\n~~~\n")
+	nb.Cells[1].SetSource("x := 2\n")
+	nb.Cells[3].SetSource("s := `\n~~~\n`\n")
+	nb.Cells[0].SetSource("# U\n\n")
+	out := nb.String()
+	if want := "# U\n\n```go\nx := 2\n```\n\n```go name=a\ns := `\n~~~\n`\n```\n"; out != want {
+		t.Errorf("String = %q, want %q", out, want)
+	}
+	back := Parse(out)
+	if len(back.Cells) != 4 || back.Cells[3].Source != "s := `\n~~~\n`\n" || back.Cells[3].Info != "name=a" {
+		t.Errorf("reparse = %+v", back.Cells)
+	}
+	// A fence the new source would close is rebuilt longer.
+	nb = Parse("```go\na\n```\n")
+	nb.Cells[0].SetSource("b\n```\nc\n")
+	if back := Parse(nb.String()); len(back.Cells) != 1 || back.Cells[0].Source != "b\n```\nc\n" {
+		t.Errorf("rebuilt fence: %q", nb.String())
+	}
+}

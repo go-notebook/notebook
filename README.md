@@ -64,9 +64,10 @@ go install github.com/go-notebook/notebook/cmd/notebook@latest
 notebook run analysis.md     # run it, print each cell's results
 notebook html analysis.md    # run it, write analysis.html (no scripts, no external resources; $\TeX$ math typeset by go-tex)
 notebook watch analysis.md   # run it on every save and keep analysis.html current
+notebook serve analysis.md   # the same in your browser at http://127.0.0.1:8888: edit cells there too
 ```
 
-Edit the `.md` in any editor; with `watch`, the page follows the file.
+Edit the `.md` in any editor, or in the page `serve` shows (double-click a cell, Ctrl/⌘+Enter to save): the file is the only source of truth, and only what changed runs again.
 
 [examples/spectrum.md](examples/spectrum.md) finds two tones in Gaussian noise with [go-ndarray](https://github.com/go-ndarray/ndarray) (arrays, `fft.RFFT`, a seeded generator that gives NumPy's numbers for the same seed) and draws the signal and its spectrum with [go-plot](https://github.com/go-plot/plot).
 

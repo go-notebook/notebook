@@ -64,6 +64,12 @@ What a cell prints, through `os.Stdout`, the `println` builtin or C code, is cap
 
 `$...$` and `$$...$$` in prose are typeset by [go-tex/math](https://github.com/go-tex/math) into SVG glyph outlines: TeX's layout from the OpenType MATH table (STIX Two Math), with no MathJax, no script and no network, so the exported page stays static. An inline formula sits on the text's baseline (go-tex returns its depth). Dollar signs follow pandoc's rule, so "costs $20 and $30" stays text. A formula go-tex cannot typeset is shown as its source, marked, with the reason as a tooltip.
 
+### Editing in the browser
+
+`notebook serve` shows the notebook and lets the page change it: double-click a cell (or its edit button) to edit it, Ctrl/⌘+Enter to save, Escape to cancel, and buttons to add a code or text cell or delete one. Each edit rewrites the Markdown file — through `format`, so everything else stays byte for byte — and the watch loop runs what changed, as for an edit made in any other editor. The file stays the only source of truth.
+
+Writing the notebook is running code, so the edit endpoints take two guards. Every change carries the session's random token in a header: only the page served here knows it, and another site can neither read it nor send a custom header without a CORS preflight this server never grants. And the Host must be a loopback name, which defeats DNS rebinding.
+
 ### Display
 
 `runtime.Displayer` is a MIME bundle: `Display() map[string][]byte` with `text/plain`, `text/html`, `image/svg+xml`, `image/png`... Values without one show their `%v`.

@@ -207,3 +207,21 @@ func longestRun(s string, c byte) int {
 	}
 	return best
 }
+
+// SetSource replaces a cell's source. When a line of the new source would
+// close a code cell's fence, the fence is rebuilt when the notebook is
+// written — backticks, longer than any run in the source, info kept — so the
+// cell still reads back whole.
+func (c *Cell) SetSource(src string) {
+	c.Source = src
+	if c.Kind != Code || c.open == "" {
+		return
+	}
+	char, n, _, _ := openFence(c.open)
+	for _, line := range splitLines(src) {
+		if closesFence(line, char, n) {
+			c.open, c.close = "", ""
+			return
+		}
+	}
+}

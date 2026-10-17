@@ -26,12 +26,28 @@ type Graph struct {
 	Errors []Error
 }
 
-// Analyze analyses the sources of a notebook's code cells, in document
+// Analyze analyses the sources of a notebook's Go code cells, in document
 // order, and builds their dependency graph.
 func Analyze(sources []string) *Graph {
+	cells := make([]Source, len(sources))
+	for i, s := range sources {
+		cells[i] = Source{Lang: Go, Source: s}
+	}
+	return AnalyzeSources(cells)
+}
+
+// AnalyzeSources is Analyze for cells in Go and in Ruby. The two languages
+// share their variables (see Shared), so a Go cell can read what a Ruby cell
+// defines and the reverse, and the graph orders them together.
+func AnalyzeSources(sources []Source) *Graph {
 	g := &Graph{Owner: map[string]int{}}
-	for i, src := range sources {
-		c := AnalyzeCell(i, src)
+	for i, s := range sources {
+		var c *Cell
+		if s.Lang == Ruby {
+			c = AnalyzeRubyCell(i, s.Source)
+		} else {
+			c = AnalyzeCell(i, s.Source)
+		}
 		g.Cells = append(g.Cells, c)
 		g.Errors = append(g.Errors, c.Errors...)
 	}
@@ -51,7 +67,7 @@ func Analyze(sources []string) *Graph {
 	for _, c := range g.Cells {
 		seen := map[int]bool{}
 		for _, u := range c.Uses {
-			if o, ok := g.Owner[u]; ok && o != c.Index && !seen[o] {
+			if o, ok := g.Owner[u]; ok && o != c.Index && !seen[o] && Shared(g.Cells[o], c, u) {
 				seen[o] = true
 				g.Deps[c.Index] = append(g.Deps[c.Index], o)
 				g.Dependents[o] = append(g.Dependents[o], c.Index)
@@ -165,4 +181,57 @@ func (g *Graph) Upstream(cells ...int) []int {
 		}
 	}
 	return out
+}
+
+// Shared reports whether the cell user sees the name that cell owner defines.
+// Within a language every name is shared. Across languages only variables are:
+//
+//   - a Go cell sees a Ruby cell's top-level local variables, but not its
+//     methods, constants or classes, nor a local named like a Go keyword or a
+//     predeclared identifier (len, int, type, …), which stays Ruby's;
+//   - a Ruby cell sees a Go cell's variables, but not its funcs or types.
+func Shared(owner, user *Cell, name string) bool {
+	if owner.Lang == user.Lang {
+		return true
+	}
+	if owner.Lang == Ruby {
+		return !contains(owner.Funcs, name) && !contains(owner.Consts, name) && GoName(name)
+	}
+	return !contains(owner.Funcs, name) && !contains(owner.Types, name)
+}
+
+func contains(list []string, s string) bool {
+	for _, e := range list {
+		if e == s {
+			return true
+		}
+	}
+	return false
+}
+
+// GoName reports whether a Ruby local can be a Go variable of the same name:
+// an identifier that is neither a Go keyword nor predeclared.
+func GoName(name string) bool {
+	if goReserved[name] {
+		return false
+	}
+	for i, r := range name {
+		ok := r == '_' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || i > 0 && r >= '0' && r <= '9'
+		if !ok {
+			return false
+		}
+	}
+	return name != ""
+}
+
+var goReserved = map[string]bool{}
+
+func init() {
+	for _, k := range strings.Fields(`break case chan const continue default defer else fallthrough for func go goto if
+		import interface map package range return select struct switch type var
+		any bool byte comparable complex64 complex128 error float32 float64 int int8 int16 int32 int64 rune string
+		uint uint8 uint16 uint32 uint64 uintptr true false iota nil
+		append cap clear close complex copy delete imag len make max min new panic print println real recover`) {
+		goReserved[k] = true
+	}
 }

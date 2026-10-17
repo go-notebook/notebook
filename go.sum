@@ -4,6 +4,8 @@ github.com/go-regexp/engine v0.1.3 h1:0U5DrrBEYjNX/f0yFESpQDWmJOtXmmZqluNAUBXjfx
 github.com/go-regexp/engine v0.1.3/go.mod h1:8rju5lq5OkskQh9+m+FjBP6965giMPUdIOdrvFrbqn4=
 github.com/go-rouge/rouge v0.4.0 h1:f/5EVTEwiEnBOeyAtkV8r5KopdIRAsRoA7Kzi/cyh2Y=
 github.com/go-rouge/rouge v0.4.0/go.mod h1:V4Xlyl1EDqEfrzloW9y6X0xpv/WvCvTiOWNIcByw2Y8=
+github.com/go-ruby-parser/parser v0.13.1 h1:gq7QVT7KdRp7nZt1UHsa73YDo77qrD8kGdQY/GVEA6g=
+github.com/go-ruby-parser/parser v0.13.1/go.mod h1:Se+ZvnD/4Vm0RRe1U5kZi0GmPSvSczJJXdZLiB0PlJY=
 github.com/go-ruby-regexp/regexp v0.0.0-20260927145504-6cbb63926eb2 h1:pNvJf0zgzg0rTEq1fToFa5fnzK13nIble80caTmdG3g=
 github.com/go-ruby-regexp/regexp v0.0.0-20260927145504-6cbb63926eb2/go.mod h1:I3i2r1AXulgMBt/KiWBcxjnoNsB09ZFKkj2Vb5Mhzuw=
 github.com/go-tex/math v0.50.0 h1:YHJ3LYzS45zBoPKGBkZW4+LUQkOeHP30YWLsfXGZCpo=

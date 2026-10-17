@@ -36,7 +36,30 @@ type Displayer interface {
 // the cell's final expression.
 type Cell struct {
 	shown []map[string][]byte
+	notes map[string]string
 }
+
+// Note records a fact about the cell for the kernel: the Go type a Ruby
+// variable has now, which the next program declares it with.
+func (c *Cell) Note(name, value string) {
+	if c.notes == nil {
+		c.notes = map[string]string{}
+	}
+	c.notes[name] = value
+}
+
+// CellError is implemented by a panic value that is a cell's own failure,
+// reported as it is rather than with the stack of the worker: a Ruby
+// exception at its line in the notebook, a deferred cell.
+type CellError interface {
+	CellError() string
+}
+
+// Deferred fails a cell that cannot be compiled yet, with the reason.
+type Deferred string
+
+// CellError is the reason.
+func (d Deferred) CellError() string { return string(d) }
 
 // Show records the display of each value. A nil interface — the nil error
 // of a call run for its effect — shows nothing.
@@ -100,6 +123,7 @@ type Reply struct {
 	Display []map[string][]byte `json:"display,omitempty"` // what it showed
 	Error   string              `json:"error,omitempty"`   // a panic, with its stack
 	Took    time.Duration       `json:"took,omitempty"`    // how long the cell ran, in the worker
+	Notes   map[string]string   `json:"notes,omitempty"`   // what the cell noted (Cell.Note)
 	Data    []byte              `json:"data,omitempty"`    // an encoded value
 	// Volatile reports a value that cannot be encoded (a func, a channel,
 	// unexported state): the cell that makes it has to run again instead.
@@ -182,6 +206,10 @@ func run(p Program, i int) (rep Reply) {
 	func() {
 		defer func() {
 			if v := recover(); v != nil {
+				if ce, ok := v.(CellError); ok {
+					rep.Error = ce.CellError()
+					return
+				}
 				rep.Error = fmt.Sprintf("panic: %v\n\n%s", v, debug.Stack())
 			}
 		}()
@@ -194,6 +222,7 @@ func run(p Program, i int) (rep Reply) {
 	_ = r.Close()
 	rep.Output = buf.String()
 	rep.Display = c.shown
+	rep.Notes = c.notes
 	return rep
 }
 

@@ -169,7 +169,7 @@ func once(k *kernel.Kernel, path string) (*format.Notebook, *kernel.Report, erro
 	var cells []gen.Code
 	for _, c := range nb.Cells {
 		if c.Kind == format.Code {
-			cells = append(cells, gen.Code{Source: c.Source, Line: c.Line})
+			cells = append(cells, gen.Code{Source: c.Source, Line: c.Line, Lang: c.Lang})
 		}
 	}
 	rep, err := k.Run(cells)

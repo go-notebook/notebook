@@ -1,7 +1,8 @@
 // Package format reads and writes notebooks.
 //
 // A notebook is a Markdown document. Its fenced code blocks whose info
-// string's first word is "go" are code cells; everything between them is
+// string's first word is "go" or "ruby" are code cells, in Go or in Ruby;
+// everything between them is
 // prose, kept byte for byte. GitHub and any Markdown viewer show a notebook as
 // a document, diffs are diffs of text, and no output is ever stored in the
 // file: results live in the kernel's value store and in exports.
@@ -27,7 +28,7 @@ type Kind uint8
 const (
 	// Prose is Markdown text.
 	Prose Kind = iota
-	// Code is a Go cell.
+	// Code is a code cell, in Go or in Ruby (see Lang).
 	Code
 )
 
@@ -42,8 +43,13 @@ type Cell struct {
 	// Line is the 1-based line of the document where Source starts.
 	Line int
 
-	// Info is a code cell's info string after "go" (its options), trimmed.
+	// Info is a code cell's info string after its language (its options),
+	// trimmed.
 	Info string
+
+	// Lang is a code cell's language, the first word of its info string:
+	// "go" or "ruby".
+	Lang string
 
 	// open and close are a code cell's fence lines, newline included, kept
 	// so that writing the notebook back reproduces it exactly.
@@ -85,7 +91,7 @@ func Parse(src string) *Notebook {
 			}
 		}
 		word, rest, _ := strings.Cut(strings.TrimSpace(info), " ")
-		if word != "go" {
+		if word != "go" && word != "ruby" {
 			for k := i; k <= end && k < len(lines); k++ {
 				prose.WriteString(lines[k])
 			}
@@ -93,7 +99,7 @@ func Parse(src string) *Notebook {
 			continue
 		}
 		flush(i + 1)
-		c := Cell{Kind: Code, Line: i + 2, Info: strings.TrimSpace(rest), open: lines[i]}
+		c := Cell{Kind: Code, Lang: word, Line: i + 2, Info: strings.TrimSpace(rest), open: lines[i]}
 		c.Source = strings.Join(lines[i+1:end], "")
 		if end < len(lines) {
 			c.close = lines[end]
@@ -119,7 +125,11 @@ func (nb *Notebook) String() string {
 		open, close := c.open, c.close
 		if open == "" {
 			fence := strings.Repeat("`", max(3, longestRun(c.Source, '`')+1))
-			open = fence + strings.TrimRight("go "+c.Info, " ") + "\n"
+			lang := c.Lang
+			if lang == "" {
+				lang = "go"
+			}
+			open = fence + strings.TrimRight(lang+" "+c.Info, " ") + "\n"
 			close = fence + "\n"
 		}
 		b.WriteString(open)
@@ -132,12 +142,17 @@ func (nb *Notebook) String() string {
 	return b.String()
 }
 
-// NewCode returns a code cell holding src, for building a notebook in code.
-func NewCode(src string) Cell {
+// NewCode returns a Go code cell holding src, for building a notebook in
+// code.
+func NewCode(src string) Cell { return NewCodeIn("go", src) }
+
+// NewCodeIn returns a code cell in the language lang ("go" or "ruby")
+// holding src.
+func NewCodeIn(lang, src string) Cell {
 	if src != "" && !strings.HasSuffix(src, "\n") {
 		src += "\n"
 	}
-	return Cell{Kind: Code, Source: src}
+	return Cell{Kind: Code, Lang: lang, Source: src}
 }
 
 // splitLines splits s after every newline, keeping the newlines; the last

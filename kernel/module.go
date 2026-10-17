@@ -31,6 +31,9 @@ func analyzeImports(srcs []string) []string {
 // imported packages' types for the generator. It does nothing when the
 // imports have not changed.
 func (k *Kernel) prepareModule(paths []string) error {
+	if k.ruby {
+		paths = append(paths, gen.RubyPath)
+	}
 	sig := strings.Join(paths, "\n")
 	if k.types != nil && sig == k.imports {
 		return nil
@@ -93,6 +96,13 @@ func (k *Kernel) goMod() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "module nbwork\n\ngo 1.27.2\n\nrequire %s %s\n", modulePath, v)
+	if k.ruby {
+		rv := k.opt.RubyVersion
+		if rv == "" {
+			rv = DefaultRubyVersion
+		}
+		fmt.Fprintf(&b, "\nrequire %s %s\n", gen.RubyModule, rv)
+	}
 	var mods []string
 	for m := range k.opt.Replace {
 		mods = append(mods, m)
@@ -104,6 +114,16 @@ func (k *Kernel) goMod() string {
 	return b.String()
 }
 
+// tagsFlag builds the worker with rbgo's core build: the Ruby language and
+// its numeric stack, without the gem bindings a notebook does not use (a
+// fifth of the size). A worker without Ruby cells does not see it.
+const tagsFlag = "-tags=rbgo_core"
+
+// DefaultRubyVersion is the version of github.com/go-scikit/ruby a work
+// module requires for its Ruby cells, unless Options.RubyVersion says
+// otherwise.
+const DefaultRubyVersion = "v0.1.0"
+
 // modulePath is this module's path, which the runtime package belongs to.
 const modulePath = "github.com/go-notebook/notebook"
 
@@ -112,7 +132,7 @@ const modulePath = "github.com/go-notebook/notebook"
 func (k *Kernel) goCmd(args ...string) *exec.Cmd {
 	cmd := exec.Command("go", args...)
 	cmd.Dir = k.opt.Dir
-	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod")
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod "+tagsFlag)
 	return cmd
 }
 
@@ -138,7 +158,7 @@ func loadImporter(dir string, paths []string) (*importer, error) {
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedTypes | packages.NeedImports | packages.NeedDeps,
 		Dir:  dir,
-		Env:  append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod"),
+		Env:  append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod "+tagsFlag),
 	}
 	roots, err := loadPackages(cfg, append([]string{gen.RuntimePath}, paths...)...)
 	if err != nil {

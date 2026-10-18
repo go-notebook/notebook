@@ -91,6 +91,19 @@ A ` ```ruby ` block is a Ruby cell. The Ruby is [go-embedded-ruby/ruby](https://
 - **Keys and keeping**: a Ruby cell's key is its source and the keys of the cells it reads, plus `go.sum`, which pins rbgo and the bindings. Ruby locals are kept like Go variables, through their Go holders: a new worker sets them back into its interpreter before the first cell that reads them. A cell that defines methods or constants is volatile, because they live only in the interpreter: a new worker runs it again before a cell that needs them.
 - **Display and errors**: a cell that ends in an expression shows its value. A figure shows itself (SVG), and anything else shows its `inspect`, so an NDArray appears in NumPy's form. An exception fails the cell with `file:line: message (Class)` at the notebook's line, and the backtrace frames in the notebook.
 
+### What a cell can do, and what stops it
+
+A notebook is a program, and it runs with your rights. A Go cell can reach the files, the network and other processes; so can a Ruby cell, through Ruby's `File`, `IO`, `Dir`, `Process` and `ENV`, and through the bindings that write files (`DataFrame#write_csv`, `Plot::Figure#save_svg`). rbgo's `rbgo_core` build, which the worker uses, leaves out the network libraries (`socket`, `net/*`, `openssl`), and requiring one raises `LoadError`. Run only notebooks you trust, as you would run only programs you trust. `notebook serve` lets a page edit the notebook, which is running code, so it takes the guards described under "Editing in the browser".
+
+Every cell runs in the worker, a process of its own. Whatever a cell does, the kernel survives it:
+- **Too long.** `-timeout` (`Options.CellTimeout`) bounds a cell. An endless loop, in Go or in Ruby, has its worker killed, and the cell fails with "stopped: the cell ran longer than …". The next run starts a new worker.
+- **Runaway recursion.** In Ruby it raises `SystemStackError`, shown with twelve frames rather than thousands.
+- **A huge allocation.** In Ruby it raises `NoMemoryError`. A real exhaustion of memory kills the worker, and the cell reports it.
+- **Ending its own process.** `exit` in Ruby is a `SystemExit` that fails the cell, and the worker lives on. `exit!` is the same. `Process.kill(:KILL, Process.pid)` and `os.Exit` stop the worker; the cell says so, and the next run restarts it.
+- **Panics.** A Go panic fails its cell. A panic of the Ruby parser is the cell's error, not a crash of the notebook (go-ruby-parser#54).
+
+These are tested (`kernel.TestRubyChaos`). What is not bounded yet: a cell's memory, short of the operating system's own limits.
+
 ### Output capture
 
 What a cell prints, through `os.Stdout`, the `println` builtin or C code, is captured by pointing file descriptors 1 and 2 at a pipe for the duration of the cell. The protocol replies travel on a duplicate of the original standard output, so a cell can never forge one. Systems without `dup2` (Windows, js, wasip1) swap `os.Stdout` and `os.Stderr` instead, and do not capture `println`.

@@ -36,6 +36,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-notebook/notebook/analysis"
@@ -64,6 +65,11 @@ type Options struct {
 	// module requires when the notebook has Ruby cells; empty means
 	// DefaultRubyVersion.
 	RubyVersion string
+
+	// CellTimeout bounds how long one cell may run: a cell still running
+	// after it — an endless loop, in Go or in Ruby — has its worker killed
+	// and fails, and the next Run starts a new worker. Zero means no bound.
+	CellTimeout time.Duration
 }
 
 // Result is the outcome of one code cell.
@@ -335,7 +341,19 @@ func (k *Kernel) restore(names []string, key string) bool {
 // runCell asks the worker to run cell i. Took is measured in the worker,
 // around the cell alone: not the round trip, nor a fresh worker's start.
 func (k *Kernel) runCell(i int) Result {
+	var timedOut atomic.Bool
+	if d := k.opt.CellTimeout; d > 0 {
+		w := k.worker.Process
+		t := time.AfterFunc(d, func() {
+			timedOut.Store(true)
+			_ = w.Kill()
+		})
+		defer t.Stop()
+	}
 	r := k.call(runtime.Request{Op: "run", Cell: i})
+	if timedOut.Load() {
+		r.Error = fmt.Sprintf("stopped: the cell ran longer than %s, the limit; its worker was killed", k.opt.CellTimeout)
+	}
 	k.learn(r.Notes)
 	return Result{Cell: i, Output: r.Output, Display: r.Display, Error: r.Error, Took: r.Took}
 }

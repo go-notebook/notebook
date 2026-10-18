@@ -86,3 +86,24 @@ func TestRubyEdges(t *testing.T) {
 		t.Fatalf("defines %v uses %v", c.Defines, c.Uses)
 	}
 }
+
+// Whatever the text of a Ruby cell, its analysis answers: no panic, every
+// error inside the cell, and the names it reports are identifiers.
+func FuzzAnalyzeRubyCell(f *testing.F) {
+	for _, s := range []string{"x = 1", "def f(a, b = c) = a + b\nf(1)", "[1].map { |v; w| w = v }", "class A < B; X = 1; end", "a, b.c = 1, 2", "x = (", "%w[a b]", "case x\nin [Integer => n] then n\nend", "begin\n  1\nrescue => e\n  e\nend"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, src string) {
+		c := AnalyzeRubyCell(0, src)
+		for _, e := range c.Errors {
+			if e.Pos < 0 || e.Pos > len(src) {
+				t.Fatalf("error at %d outside a %d-byte cell", e.Pos, len(src))
+			}
+		}
+		for _, n := range append(append([]string{}, c.Defines...), c.Uses...) {
+			if n == "" {
+				t.Fatalf("an empty name from %q", src)
+			}
+		}
+	})
+}

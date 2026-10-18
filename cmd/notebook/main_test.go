@@ -127,7 +127,7 @@ func TestFailures(t *testing.T) {
 
 func TestWatch(t *testing.T) {
 	path := notebook(t, good)
-	k, err := newKernel(path, filepath.Join(t.TempDir(), "w"), "")
+	k, err := newKernel(path, filepath.Join(t.TempDir(), "w"), "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestNoCacheDir(t *testing.T) {
 	for _, v := range []string{"HOME", "XDG_CACHE_HOME", "LocalAppData", "home"} {
 		t.Setenv(v, "")
 	}
-	if _, err := newKernel("nb.md", "", ""); err == nil {
+	if _, err := newKernel("nb.md", "", "", 0); err == nil {
 		t.Error("no cache directory, yet a kernel")
 	}
 }
@@ -257,7 +257,7 @@ func TestRuntimeSource(t *testing.T) {
 	if v, dir := runtimeSource(); v != "v1.2.3" || dir != "" {
 		t.Errorf("release: %q %q", v, dir)
 	}
-	k, err := newKernel("nb.md", t.TempDir(), "")
+	k, err := newKernel("nb.md", t.TempDir(), "", time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func TestRuntimeSourceFromTree(t *testing.T) {
 			t.Errorf("released(%q) = %v", v, !want)
 		}
 	}
-	k, err := newKernel("nb.md", t.TempDir(), "/elsewhere")
+	k, err := newKernel("nb.md", t.TempDir(), "/elsewhere", 0)
 	if err != nil {
 		t.Fatal(err)
 	}

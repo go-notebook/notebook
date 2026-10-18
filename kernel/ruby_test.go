@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-notebook/notebook/gen"
 )
@@ -133,5 +134,44 @@ func TestRubyTypeChange(t *testing.T) {
 	}
 	if got := shown(rep.Results[1]); got != "[]int64" || ran(rep) != "RR" {
 		t.Fatalf("after the change: %q %s %+v", got, ran(rep), rep.Results)
+	}
+}
+
+// Chaos: what a cell can do to its worker, and that the kernel recovers.
+func TestRubyChaos(t *testing.T) {
+	k := newRubyKernel(t)
+	k.opt.CellTimeout = 3 * time.Second
+	ok := []gen.Code{ruby("x = 41\n", 2), golang("y := x + 1\ny\n", 5)}
+	for _, c := range []struct {
+		name string
+		cell gen.Code
+		want string
+	}{
+		{"an endless Ruby loop", ruby("loop { }\n", 9), "stopped: the cell ran longer than 3s"},
+		{"an endless Go loop", golang("for {\n}\n", 9), "stopped: the cell ran longer than 3s"},
+		{"a worker killed mid-cell", ruby("Process.kill(:KILL, Process.pid)\nsleep 5\n", 9), "the worker stopped"},
+		{"exit! in Ruby", ruby("exit!(3)\n", 9), "SystemExit"},
+		{"a Go panic", golang("var m map[string]int\nm[\"a\"] = 1\n", 9), "assignment to entry in nil map"},
+		{"a huge Ruby allocation", ruby("'x' * (2**62)\n", 9), "failed to allocate memory (NoMemoryError)"},
+		{"runaway recursion", ruby("def f(n) = f(n + 1)\nf(0)\n", 9), "stack level too deep (SystemStackError)"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			start := time.Now()
+			rep, err := k.Run(append(append([]gen.Code{}, ok...), c.cell))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if e := rep.Results[2].Error; !strings.Contains(e, c.want) {
+				t.Fatalf("error %q, want %q", e, c.want)
+			}
+			if d := time.Since(start); d > 30*time.Second {
+				t.Fatalf("took %s", d)
+			}
+			// The notebook runs again, from a sound worker.
+			rep, err = k.Run(append(append([]gen.Code{}, ok...), ruby("y * 2\n", 9)))
+			if err != nil || rep.Results[2].Error != "" || shown(rep.Results[2]) != "84" {
+				t.Fatalf("after: %v %+v", err, rep.Results)
+			}
+		})
 	}
 }

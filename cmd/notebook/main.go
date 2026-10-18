@@ -59,6 +59,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	src := fs.String("runtime-src", "", "use the go-notebook source tree at this path instead of a released runtime")
 	interval := fs.Duration("interval", 300*time.Millisecond, "how often watch and serve look at the file")
 	addr := fs.String("addr", "127.0.0.1:8888", "where serve listens")
+	timeout := fs.Duration("timeout", 0, "stop a cell that runs longer than this (0: no limit)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -66,7 +67,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return errors.New(usage)
 	}
 	path := fs.Arg(0)
-	k, err := newKernel(path, *work, *src)
+	k, err := newKernel(path, *work, *src, *timeout)
 	if err != nil {
 		return err
 	}
@@ -102,7 +103,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 }
 
 // newKernel opens the kernel for a notebook, with its work directory.
-func newKernel(path, work, src string) (*kernel.Kernel, error) {
+func newKernel(path, work, src string, timeout time.Duration) (*kernel.Kernel, error) {
 	if work == "" {
 		abs, _ := filepath.Abs(path) // fails only without a working directory; the name still keys the cache
 		cache, err := os.UserCacheDir()
@@ -112,7 +113,7 @@ func newKernel(path, work, src string) (*kernel.Kernel, error) {
 		sum := sha256.Sum256([]byte(abs))
 		work = filepath.Join(cache, "go-notebook", hex.EncodeToString(sum[:8]))
 	}
-	opt := kernel.Options{Dir: work, Name: filepath.Base(path)}
+	opt := kernel.Options{Dir: work, Name: filepath.Base(path), CellTimeout: timeout}
 	version, dir := runtimeSource()
 	if src != "" {
 		dir = src

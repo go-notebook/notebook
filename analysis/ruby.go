@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"fmt"
 	"reflect"
 	"sort"
 	"strconv"
@@ -41,7 +42,7 @@ type Source struct {
 // that statement is an expression rather than an assignment or a definition.
 func AnalyzeRubyCell(index int, src string) *Cell {
 	c := &Cell{Index: index, Source: src, Lang: Ruby, Imports: map[string]string{}}
-	prog, err := parser.Parse(src)
+	prog, err := parse(src)
 	if err != nil {
 		c.Errors = append(c.Errors, Error{Cell: index, Pos: rubyErrorPos(src, err.Error()), Msg: err.Error()})
 		return c
@@ -149,7 +150,7 @@ func (w *rubyWalker) top(n ast.Node) {
 }
 
 func (w *rubyWalker) defineLocal(name string) {
-	if w.defined[name] {
+	if name == "" || w.defined[name] { // "" is an anonymous splat: * = …
 		return
 	}
 	w.defined[name] = true
@@ -168,7 +169,7 @@ func (w *rubyWalker) defineOther(name string, list *[]string) {
 }
 
 func (w *rubyWalker) use(name string) {
-	if !w.defined[name] && !Private(name) {
+	if name != "" && !w.defined[name] && !Private(name) {
 		w.uses[name] = true
 	}
 }
@@ -279,4 +280,16 @@ func (w *rubyWalker) block(b *ast.Block, locals map[string]bool) {
 	for _, s := range b.Body {
 		w.expr(s, scope)
 	}
+}
+
+// parse is parser.Parse, with a panic of the parser — go-ruby-parser v0.13.1
+// indexes past the end of a string that ends in a backslash — reported as an
+// error of the cell, not a crash of the notebook.
+func parse(src string) (prog *ast.Program, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			prog, err = nil, fmt.Errorf("the Ruby parser failed on this cell: %v", r)
+		}
+	}()
+	return parser.Parse(src)
 }

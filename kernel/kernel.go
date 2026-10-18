@@ -70,6 +70,11 @@ type Options struct {
 	// after it — an endless loop, in Go or in Ruby — has its worker killed
 	// and fails, and the next Run starts a new worker. Zero means no bound.
 	CellTimeout time.Duration
+
+	// CellMemory bounds, in bytes, the heap a worker's cells may hold. The
+	// Go garbage collector keeps under it as long as it can; a cell that
+	// holds more has its worker stopped and fails. Zero means no bound.
+	CellMemory int64
 }
 
 // Result is the outcome of one code cell.
@@ -117,6 +122,7 @@ type Kernel struct {
 	rubyTypes    map[string]string
 	typesChanged bool
 	waiting      bool            // a cell of this Run was deferred, or reads a type that changed
+	exitCode     int             // the exit status of the last worker that ended
 	changed      map[string]bool // the Ruby variables whose type this Run changed
 }
 
@@ -387,8 +393,12 @@ func (k *Kernel) call(req runtime.Request) runtime.Reply {
 // died handles a worker that stopped answering (a cell called os.Exit, or
 // crashed outside the recovered call).
 func (k *Kernel) died(err error) runtime.Reply {
+	k.exitCode = 0
 	_ = k.stop()
 	k.src = nil
+	if k.exitCode == runtime.ExitMemory {
+		return runtime.Reply{Error: fmt.Sprintf("stopped: the cell went over its memory limit of %d bytes; its worker was killed", k.opt.CellMemory)}
+	}
 	msg := "the worker stopped"
 	if err != nil {
 		msg += ": " + err.Error()
@@ -508,6 +518,9 @@ func (k *Kernel) start() error {
 	cmd := exec.Command(k.binary())
 	cmd.Dir = k.opt.Dir
 	cmd.Stderr = os.Stderr
+	if k.opt.CellMemory > 0 {
+		cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", runtime.MemoryEnv, k.opt.CellMemory))
+	}
 	// The pipes fail only when Stdin or Stdout is already set.
 	in, _ := cmd.StdinPipe()
 	out, _ := cmd.StdoutPipe()
@@ -532,6 +545,7 @@ func (k *Kernel) stop() error {
 	k.worker = nil
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
+		k.exitCode = ee.ExitCode()
 		return nil // it may have died first; that was reported
 	}
 	return err

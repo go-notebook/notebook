@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
+	"runtime/debug"
 	"strings"
 	"testing"
+	"time"
 )
 
 type shown struct{}
@@ -315,5 +318,21 @@ func TestNotesAndCellErrors(t *testing.T) {
 	}
 	if rep := run(p, 1); rep.Error != "not run yet: waits" {
 		t.Fatalf("error %q", rep.Error)
+	}
+}
+
+func TestWatchMemory(t *testing.T) {
+	defer func(f func() uint64) { heapBytes = f }(heapBytes)
+	defer debug.SetMemoryLimit(math.MaxInt64)
+	if heapBytes() == 0 {
+		t.Fatal("the heap metric reads 0")
+	}
+	exited := make(chan int, 1)
+	watchMemory("", time.Millisecond, func(c int) { exited <- c })  // no limit
+	watchMemory("x", time.Millisecond, func(c int) { exited <- c }) // not a number
+	heapBytes = func() uint64 { return 1 << 40 }
+	watchMemory("1000", time.Millisecond, func(c int) { exited <- c })
+	if c := <-exited; c != ExitMemory {
+		t.Fatalf("exit %d", c)
 	}
 }

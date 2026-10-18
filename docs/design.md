@@ -98,11 +98,11 @@ A notebook is a program, and it runs with your rights. A Go cell can reach the f
 Every cell runs in the worker, a process of its own. Whatever a cell does, the kernel survives it:
 - **Too long.** `-timeout` (`Options.CellTimeout`) bounds a cell. An endless loop, in Go or in Ruby, has its worker killed, and the cell fails with "stopped: the cell ran longer than …". The next run starts a new worker.
 - **Runaway recursion.** In Ruby it raises `SystemStackError`, shown with twelve frames rather than thousands.
-- **A huge allocation.** In Ruby it raises `NoMemoryError`. A real exhaustion of memory kills the worker, and the cell reports it.
+- **Too much memory.** `-memory` (`Options.CellMemory`) bounds the heap a worker's cells hold. The garbage collector keeps under it as long as it can; a cell that holds more has its worker stopped and fails with "stopped: the cell went over its memory limit". A single impossible allocation in Ruby (`'x' * 2**62`) raises `NoMemoryError` before that.
 - **Ending its own process.** `exit` in Ruby is a `SystemExit` that fails the cell, and the worker lives on. `exit!` is the same. `Process.kill(:KILL, Process.pid)` and `os.Exit` stop the worker; the cell says so, and the next run restarts it.
 - **Panics.** A Go panic fails its cell. A panic of the Ruby parser is the cell's error, not a crash of the notebook (go-ruby-parser#54).
 
-These are tested (`kernel.TestRubyChaos`). What is not bounded yet: a cell's memory, short of the operating system's own limits.
+These are tested (`kernel.TestRubyChaos`). The memory limit counts the Go heap; memory a cell holds outside it (a large stack, a mapped file) is bounded only by the operating system.
 
 ### Output capture
 

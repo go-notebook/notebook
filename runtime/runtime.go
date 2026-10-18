@@ -132,6 +132,7 @@ type Reply struct {
 
 // Serve answers the kernel until it says exit or closes the input.
 func Serve(p Program) {
+	watchMemory(os.Getenv(MemoryEnv), 20*time.Millisecond, os.Exit)
 	serve(p, os.Stdin, protocolOut())
 }
 

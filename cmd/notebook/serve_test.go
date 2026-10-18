@@ -77,7 +77,7 @@ func TestLiveHandler(t *testing.T) {
 
 func TestServe(t *testing.T) {
 	path := notebook(t, good)
-	k, err := newKernel(path, filepath.Join(t.TempDir(), "w"), "", 0)
+	k, err := newKernel(path, filepath.Join(t.TempDir(), "w"), "", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

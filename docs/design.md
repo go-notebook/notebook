@@ -56,6 +56,41 @@ The kernel compiles the program into a worker process. Go's build cache makes re
 
 This assumes a cell computes the same values from the same inputs. A cell that reads the clock or an unseeded generator should be run explicitly (`Kernel.RunCell`).
 
+### Ruby cells
+
+A ` ```ruby ` block is a Ruby cell. The Ruby is [go-embedded-ruby/ruby](https://github.com/go-embedded-ruby/ruby) ("rbgo"), a bytecode VM written in Go, with the [go-scikit bindings](https://github.com/go-scikit/ruby) registered: `Stats`, `Special`, `Optimize`, `Integrate`, `DataFrame`, `Plot` over the same Go libraries a Go cell imports, and rbgo's own `NDArray`. A notebook with Ruby cells adds `github.com/go-scikit/ruby` to the work module, and the worker is built with `-tags rbgo_core` (the Ruby language and its numeric stack, no gems). The worker holds one interpreter, so the Ruby cells share one top-level binding.
+
+- **Names.** `analysis` reads a Ruby cell with rbgo's own parser, [go-ruby-parser](https://github.com/go-ruby-parser/parser). The cell defines the locals it assigns at its top level, and the methods, constants, classes and modules it defines there. It uses the names it reads before assigning them: a local, a method called without a receiver, a constant. The rules of Go cells apply too: one definition per name, no assignment to another cell's variable, and `_x` stays in its cell.
+- **Across languages only variables are shared.** A Go cell sees a Ruby cell's top-level locals, but not its methods, constants or classes. It does not see a local named like a Go keyword or predeclared identifier either (`len`, `type`, `int`): that local stays Ruby's. A Ruby cell sees a Go cell's variables, but not its funcs or types. A Go variable whose name starts with an upper-case letter is a Ruby constant there.
+- **Go to Ruby**: before a Ruby cell runs, each Go variable it reads is set as a Ruby local, converted by rbgo:
+  - numbers, strings and booleans as such;
+  - slices as Arrays, maps as Hashes;
+  - an `*ndarray.Array` as the NDArray itself, not a copy;
+  - any other value (a `*plot.Figure`, a struct) as an object that comes back to Go as itself.
+- **Ruby to Go**: after a Ruby cell runs, each local it assigns is stored in a Go variable whose type is the type of its value ([cells.GoValue](https://github.com/go-scikit/ruby/tree/main/cells)):
+
+  | Ruby value | Go type |
+  | --- | --- |
+  | nil | `any` (nil) |
+  | true, false | `bool` |
+  | Integer | `int64` (`*big.Int` when it does not fit) |
+  | Float | `float64` |
+  | String | `string` |
+  | Symbol | `ruby.Symbol` |
+  | Complex | `complex128` |
+  | Rational | `*big.Rat` |
+  | NDArray | `*ndarray.Array`, the same array |
+  | Array of all Floats, all Integers, all Strings, all booleans | `[]float64`, `[]int64`, `[]string`, `[]bool` |
+  | any other Array | `[]any` |
+  | Hash with String keys | `map[string]any` |
+  | Hash with Symbol keys | `map[ruby.Symbol]any` |
+  | any other Hash | `map[any]any` |
+  | a go-scikit object | the Go value it wraps: `*plot.Figure`, `stats.TTestResult`, `*optimize.Result`, … |
+  | any other Ruby object | `ruby.Value` (go-embedded-ruby), which a Go cell can `Call` |
+- **The type comes from the value, so it is known once the cell has run.** The worker reports the type of each variable a Ruby cell assigns, and the kernel keeps these types in the work directory. A Go cell that reads a Ruby variable of a type not known yet is deferred, together with whatever reads it: the program is built without it, the Ruby cell runs, and the deferred cells are compiled with the type and run, all in the same `Run`. A later change of type does the same for the Go cells that read the variable. A variable that is nil, or has no nameable Go type, is an `any`.
+- **Keys and keeping**: a Ruby cell's key is its source and the keys of the cells it reads, plus `go.sum`, which pins rbgo and the bindings. Ruby locals are kept like Go variables, through their Go holders: a new worker sets them back into its interpreter before the first cell that reads them. A cell that defines methods or constants is volatile, because they live only in the interpreter: a new worker runs it again before a cell that needs them.
+- **Display and errors**: a cell that ends in an expression shows its value. A figure shows itself (SVG), and anything else shows its `inspect`, so an NDArray appears in NumPy's form. An exception fails the cell with `file:line: message (Class)` at the notebook's line, and the backtrace frames in the notebook.
+
 ### Output capture
 
 What a cell prints, through `os.Stdout`, the `println` builtin or C code, is captured by pointing file descriptors 1 and 2 at a pipe for the duration of the cell. The protocol replies travel on a duplicate of the original standard output, so a cell can never forge one. Systems without `dup2` (Windows, js, wasip1) swap `os.Stdout` and `os.Stderr` instead, and do not capture `println`.
@@ -79,3 +114,4 @@ Writing the notebook is running code, so the edit endpoints take two guards. Eve
 - A Jupyter wire-protocol front end (JupyterLab, VS Code), and a go-widgets native and wasm UI.
 - Running independent branches of the graph concurrently.
 - `MarshalBinary` on go-ndarray arrays, so that arrays are kept rather than volatile.
+- Ruby cells in a Jupyter front end; a Ruby cell cannot call a Go func of the notebook (funcs are not values Ruby can see).

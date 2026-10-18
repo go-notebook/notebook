@@ -159,7 +159,7 @@ func (k *Kernel) Run(cells []gen.Code) (*Report, error) {
 		rep.Built = true
 		// One Run, seen once: a cell that ran in the first pass ran.
 		for i, r := range first.Results {
-			if r.Ran && !rep.Results[i].Ran && i < len(rep.Results) {
+			if r.Ran && i < len(rep.Results) && rep.Results[i].Kept {
 				rep.Results[i].Ran, rep.Results[i].Kept, rep.Results[i].Took = true, false, r.Took
 			}
 		}

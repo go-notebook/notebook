@@ -12,13 +12,13 @@ import (
 )
 
 // newRubyKernel is newKernel for notebooks with Ruby cells. The work module
-// requires the released go-scikit/ruby; NOTEBOOK_RUBY_REPLACE, a list of
+// requires the released go-scikit/ruby; NOTEBOOK_REPLACE, a list of
 // module=dir pairs separated by commas, points it at local checkouts
 // instead (a bindings or rbgo change under development).
 func newRubyKernel(t *testing.T) *Kernel {
 	t.Helper()
 	k := newKernel(t)
-	for _, pair := range strings.Split(os.Getenv("NOTEBOOK_RUBY_REPLACE"), ",") {
+	for _, pair := range strings.Split(os.Getenv("NOTEBOOK_REPLACE"), ",") {
 		if mod, dir, ok := strings.Cut(pair, "="); ok {
 			abs, err := filepath.Abs(dir)
 			if err != nil {

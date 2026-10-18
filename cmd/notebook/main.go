@@ -117,10 +117,19 @@ func newKernel(path, work, src string) (*kernel.Kernel, error) {
 	if src != "" {
 		dir = src
 	}
+	opt.Replace = map[string]string{}
 	if dir != "" {
-		opt.Replace = map[string]string{"github.com/go-notebook/notebook": dir}
+		opt.Replace["github.com/go-notebook/notebook"] = dir
 	} else {
 		opt.RuntimeVersion = version
+	}
+	// NOTEBOOK_REPLACE points modules of the work module at local
+	// checkouts — module=dir pairs separated by commas — to run a notebook
+	// against a library being changed.
+	for _, pair := range strings.Split(os.Getenv("NOTEBOOK_REPLACE"), ",") {
+		if mod, d, ok := strings.Cut(pair, "="); ok {
+			opt.Replace[mod], _ = filepath.Abs(d) // fails only without a working directory
+		}
 	}
 	return kernel.New(opt)
 }

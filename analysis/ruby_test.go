@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -62,5 +63,26 @@ func TestMixedGraph(t *testing.T) {
 	}
 	if GoName("len") || GoName("type") || !GoName("x9") || GoName("9x") || GoName("") || GoName("é") {
 		t.Fatal("GoName")
+	}
+}
+
+func TestRubyEdges(t *testing.T) {
+	for msg, want := range map[string]int{
+		"something else":              0,
+		"parse error at line x: oops": 0,
+		"parse error at line 2: oops": 6,
+		"parse error at line 9: oops": 11,
+	} {
+		if got := rubyErrorPos("a = 1\nb = (", msg); got != want {
+			t.Errorf("rubyErrorPos(%q) = %d, want %d", msg, got, want)
+		}
+	}
+	// Assigned twice, private names, a method defined twice, a block default.
+	c := AnalyzeRubyCell(0, "o.a, x = 1, 2\n[1].each { |a| [2].each { |b| a + b + o } }\nx = 1\nx = 2\n_p = 3\ndef _hidden = 1\ndef f = 1\ndef f = 2\nK = 1\nK = 2\n[1].each { |a, b = q| a }")
+	if len(c.Errors) > 0 {
+		t.Fatal(c.Errors)
+	}
+	if strings.Join(c.Defines, ",") != "x,f,K" || strings.Join(c.Uses, ",") != "o,q" {
+		t.Fatalf("defines %v uses %v", c.Defines, c.Uses)
 	}
 }

@@ -515,7 +515,11 @@ func (g *generator) writeImports(b *strings.Builder, runtime bool) {
 		}
 	}
 	for _, p := range paths {
-		fmt.Fprintf(b, "\t%s %q\n", g.names[p], p)
+		name := g.names[p]
+		if runtime && g.onlyDeferred(name) {
+			name = "_" // only deferred cells, whose code is not emitted, use it
+		}
+		fmt.Fprintf(b, "\t%s %q\n", name, p)
 	}
 	b.WriteString(")\n\n")
 }

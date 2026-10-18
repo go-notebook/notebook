@@ -62,7 +62,7 @@ const reload = `<script>
 </script>`
 
 // editing is added to the served page: a tool bar on each cell (edit, add a
-// code or a text cell below, delete), double-click to edit, Ctrl/Cmd+Enter
+// Go, a Ruby or a text cell below, delete), double-click to edit, Ctrl/Cmd+Enter
 // to save, Escape to cancel. Saving rewrites the notebook file, and the
 // watch loop runs what changed and reloads the page.
 const editing = `<style>
@@ -83,7 +83,7 @@ section[data-i]:hover > .nb-tools, .nb-top .nb-tools { display: flex; }
     const bar = document.createElement("div");
     bar.className = "nb-tools";
     bar.innerHTML = (withEdit ? '<button data-act="edit" title="Edit (or double-click)">edit</button>' : "") +
-      '<button data-act="code">+ code</button><button data-act="prose">+ text</button>' +
+      '<button data-act="code">+ go</button><button data-act="ruby">+ ruby</button><button data-act="prose">+ text</button>' +
       (withEdit ? '<button data-act="delete">delete</button>' : "");
     bar.addEventListener("click", async e => {
       const act = e.target.dataset.act;

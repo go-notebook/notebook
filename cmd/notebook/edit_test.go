@@ -100,6 +100,12 @@ func TestEditor(t *testing.T) {
 		t.Fatalf("after inserts: %+v", nb.Cells)
 	}
 	do(t, "POST", srv.URL+"/delete/2", e.token, "", "")
+	// A Ruby cell, written with its own fence; then gone again.
+	do(t, "POST", srv.URL+"/insert/1?kind=ruby", e.token, "", "")
+	if nb := format.Parse(file()); len(nb.Cells) != 4 || nb.Cells[2].Lang != "ruby" || !strings.Contains(file(), "```ruby\n```\n") {
+		t.Fatalf("after a Ruby insert: %+v\n%s", nb.Cells, file())
+	}
+	do(t, "POST", srv.URL+"/delete/2", e.token, "", "")
 	if nb := format.Parse(file()); len(nb.Cells) != 3 || nb.Cells[1].Source != "x := 2\n" || nb.Cells[2].Kind != format.Prose {
 		t.Errorf("after delete: %+v", nb.Cells)
 	}

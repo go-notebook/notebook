@@ -116,3 +116,22 @@ func TestRubyErrorAtItsLine(t *testing.T) {
 		t.Fatalf("error %q", e)
 	}
 }
+
+// A Ruby variable that changes type: the Go cell reading it is compiled again
+// with the new type, in the same Run.
+func TestRubyTypeChange(t *testing.T) {
+	k := newRubyKernel(t)
+	cells := []gen.Code{ruby("n = 1.5\n", 2), golang("import \"fmt\"\n\ns := fmt.Sprintf(\"%T\", n)\ns\n", 5)}
+	rep, err := k.Run(cells)
+	if err != nil || shown(rep.Results[1]) != "float64" {
+		t.Fatalf("%v %+v", err, rep)
+	}
+	cells[0] = ruby("n = [1, 2]\n", 2)
+	rep, err = k.Run(cells)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := shown(rep.Results[1]); got != "[]int64" || ran(rep) != "RR" {
+		t.Fatalf("after the change: %q %s %+v", got, ran(rep), rep.Results)
+	}
+}

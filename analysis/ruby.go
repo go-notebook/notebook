@@ -114,6 +114,8 @@ func (w *rubyWalker) top(n ast.Node) {
 		for i, name := range n.Names {
 			if n.Targets == nil || n.Targets[i] == nil {
 				w.defineLocal(name)
+			} else if _, local := n.Targets[i].(*ast.VarRef); local {
+				w.defineLocal(name)
 			} else {
 				w.expr(n.Targets[i], nil)
 			}

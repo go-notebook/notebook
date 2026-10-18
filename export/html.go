@@ -39,7 +39,7 @@ func HTML(w io.Writer, title string, nb *format.Notebook, rep *kernel.Report) er
 			continue
 		}
 		fmt.Fprintf(&b, `<section class="cell" id="cell-%d" data-i="%d"><pre class="code"><code>%s</code></pre>`,
-			code, i, highlight(strings.TrimRight(c.Source, "\n")))
+			code, i, highlight(c.Lang, strings.TrimRight(c.Source, "\n")))
 		if rep != nil && code < len(rep.Results) {
 			writeResult(&b, rep.Results[code])
 		}
@@ -94,11 +94,14 @@ func writeBundle(b *bytes.Buffer, d map[string][]byte) {
 	}
 }
 
-// highlight colours Go source with go-rouge's Go lexer (Rouge's short
-// classes: k keyword, s string, m number, c comment, n name ...), escaped
-// as HTML.
-func highlight(src string) string {
-	h, _ := rouge.Highlight(src, "go", "html") // fails only for an unknown lexer or formatter
+// highlight colours a cell's source with go-rouge's lexer for its language,
+// Go or Ruby (Rouge's short classes: k keyword, s string, ss symbol, m
+// number, c comment, n name ...), escaped as HTML.
+func highlight(lang, src string) string {
+	if lang != "ruby" {
+		lang = "go"
+	}
+	h, _ := rouge.Highlight(src, lang, "html") // fails only for an unknown lexer or formatter
 	return h
 }
 
@@ -128,7 +131,8 @@ pre { overflow-x: auto; padding: .75rem 1rem; border-radius: 6px; font: 14px/1.5
 .code { background: var(--code); border: 1px solid var(--line); margin: 0; }
 .code .k, .code .kd, .code .kn, .code .kr, .code .kc { color: var(--hl-key); }
 .code .kt, .code .nc { color: var(--hl-type); }
-.code .s, .code .s1, .code .s2, .code .sb, .code .sc, .code .se, .code .dl { color: var(--hl-str); }
+.code .s, .code .s1, .code .s2, .code .sb, .code .sc, .code .se, .code .dl, .code .ss, .code .si, .code .sr { color: var(--hl-str); }
+.code .no, .code .vi, .code .vg, .code .vc { color: var(--hl-type); }
 .code .m, .code .mi, .code .mf, .code .mh, .code .mo, .code .mb { color: var(--hl-num); }
 .code .c, .code .c1, .code .cm, .code .cp { color: var(--hl-com); font-style: italic; }
 .code .nf, .code .nb, .code .bp { color: var(--hl-fn); }

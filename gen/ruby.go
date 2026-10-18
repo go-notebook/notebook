@@ -201,3 +201,22 @@ func (g *generator) writeRubyCell(b *strings.Builder, k int) {
 	}
 	b.WriteString("},\n\t}, _k.Show, _k.Note)\n}\n\n")
 }
+
+// onlyDeferred reports whether the package imported as name is referred to
+// by deferred cells only (and is no type a variable is declared with).
+func (g *generator) onlyDeferred(name string) bool {
+	if len(g.prog.Deferred) == 0 {
+		return false
+	}
+	for i, c := range g.parsed {
+		if g.prog.Deferred[i] == "" && c.refs[name] {
+			return false
+		}
+	}
+	for _, v := range g.prog.Vars {
+		if strings.Contains(v.Type, name+".") {
+			return false
+		}
+	}
+	return true
+}

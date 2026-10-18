@@ -301,3 +301,19 @@ func TestEncodeNested(t *testing.T) {
 		t.Error("a nested failing MarshalBinary encoded")
 	}
 }
+
+// A cell's notes reach the kernel, and a cell's own failure is reported as it
+// is, without the worker's stack.
+func TestNotesAndCellErrors(t *testing.T) {
+	p := Program{Cells: []func(*Cell){
+		func(c *Cell) { c.Note("m", "float64"); c.Note("n", "[]int64") },
+		func(c *Cell) { panic(Deferred("not run yet: waits")) },
+	}}
+	rep := run(p, 0)
+	if rep.Notes["m"] != "float64" || rep.Notes["n"] != "[]int64" || rep.Error != "" {
+		t.Fatalf("notes %v error %q", rep.Notes, rep.Error)
+	}
+	if rep := run(p, 1); rep.Error != "not run yet: waits" {
+		t.Fatalf("error %q", rep.Error)
+	}
+}

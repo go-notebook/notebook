@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -17,23 +16,20 @@ import (
 	"github.com/go-notebook/notebook/kernel"
 )
 
-// TestMain lets a child process run main() (selected by an environment
-// variable), so the wrapper around run is covered; TestMainWrapper starts it.
-func TestMain(m *testing.M) {
-	if os.Getenv("NOTEBOOK_RUN_MAIN") == "1" {
-		os.Args = []string{"notebook"}
-		main()
-		return // not reached: main exits
+// main exits 1 on an error, and does not exit on success.
+func TestMainExit(t *testing.T) {
+	code := -1
+	seam(t, &osExit, func(c int) { code = c })
+	seam(t, &os.Args, []string{"notebook"})
+	main()
+	if code != 1 {
+		t.Errorf("main without a verb: exit %d, want 1", code)
 	}
-	os.Exit(m.Run())
-}
-
-func TestMainWrapper(t *testing.T) {
-	cmd := exec.Command(os.Args[0], "-test.run=^$")
-	cmd.Env = append(os.Environ(), "NOTEBOOK_RUN_MAIN=1")
-	out, err := cmd.CombinedOutput()
-	if err == nil || !strings.Contains(string(out), "notebook: usage") {
-		t.Errorf("main without arguments: %v %q", err, out)
+	code = -1
+	os.Args = []string{"notebook", "--version"}
+	main()
+	if code != -1 {
+		t.Errorf("main --version: exit %d, want none", code)
 	}
 }
 
@@ -56,19 +52,26 @@ func TestRunAndHTML(t *testing.T) {
 	path := notebook(t, good)
 	work := filepath.Join(t.TempDir(), "work")
 	var out, errs bytes.Buffer
-	if err := run([]string{"run", "-work", work, path}, &out, &errs); err != nil {
+	if err := run([]string{"run", "--work", work, path}, &out, &errs); err != nil {
 		t.Fatalf("run: %v\n%s", err, errs.String())
+	}
+	if errs.Len() != 0 {
+		t.Errorf("POSIX flags drew a note: %q", errs.String())
 	}
 	if s := out.String(); !strings.Contains(s, "── cell 0 (line 4, ran in") || !strings.Contains(s, "   hi\n") || !strings.Contains(s, "   42\n") {
 		t.Errorf("run output:\n%s", s)
 	}
 	out.Reset()
+	// The single-dash spelling of earlier releases still works, with a note.
 	if err := run([]string{"run", "-work", work, path}, &out, &errs); err != nil || !strings.Contains(out.String(), "kept") {
 		t.Errorf("second run: %v\n%s", err, out.String())
 	}
+	if !strings.Contains(errs.String(), "read -work as --work") {
+		t.Errorf("no note for -work: %q", errs.String())
+	}
 	out.Reset()
 	html := filepath.Join(t.TempDir(), "out.html")
-	if err := run([]string{"html", "-work", work, "-o", html, path}, &out, &errs); err != nil {
+	if err := run([]string{"html", "-w", work, "--output", html, path}, &out, &errs); err != nil {
 		t.Fatal(err)
 	}
 	page, _ := os.ReadFile(html)
@@ -76,7 +79,7 @@ func TestRunAndHTML(t *testing.T) {
 		t.Errorf("html: %q", out.String())
 	}
 	// The default page path is next to the notebook.
-	if err := run([]string{"html", "-work", work, path}, &out, &errs); err != nil {
+	if err := run([]string{"html", path, "--work=" + work}, &out, &errs); err != nil { // flags after the file, too
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(strings.TrimSuffix(path, ".md") + ".html"); err != nil {
@@ -225,6 +228,19 @@ func TestWatchVerb(t *testing.T) {
 	}
 }
 
+// Without --work the work directory is under the user cache directory.
+func TestDefaultWorkDir(t *testing.T) {
+	home := t.TempDir()
+	for _, v := range []string{"HOME", "XDG_CACHE_HOME", "LocalAppData", "home"} {
+		t.Setenv(v, home)
+	}
+	k, err := newKernel("nb.md", "", "", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = k.Close()
+}
+
 func TestNoCacheDir(t *testing.T) {
 	for _, v := range []string{"HOME", "XDG_CACHE_HOME", "LocalAppData", "home"} {
 		t.Setenv(v, "")
@@ -297,11 +313,20 @@ func TestLimitsOutOfRange(t *testing.T) {
 		{"run", "-memory", "-1", "nb.md"},
 		{"run", "-memory", "8796093022208", "nb.md"}, // 2^43 MiB = 2^63 bytes
 		{"run", "-timeout", "-1s", "nb.md"},
+		{"run", "--memory", "-1", "nb.md"},
+		{"run", "-m", "8796093022208", "nb.md"},
+		{"html", "--timeout=-1ns", "nb.md"},
+		{"watch", "--interval", "0s", "nb.md"},
+		{"serve", "-interval", "-1s", "nb.md"},
 	} {
 		var out, errOut bytes.Buffer
 		err := run(args, &out, &errOut)
-		if err == nil || !strings.Contains(err.Error(), args[1]) {
-			t.Errorf("%v: got %v, want an error naming %s", args, err, args[1])
+		name, _, _ := strings.Cut(strings.TrimLeft(args[1], "-"), "=")
+		if name == "m" {
+			name = "memory"
+		}
+		if err == nil || !strings.Contains(err.Error(), "--"+name) {
+			t.Errorf("%v: got %v, want an error naming --%s", args, err, name)
 		}
 	}
 }

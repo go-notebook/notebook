@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 	"time"
@@ -143,21 +144,28 @@ func TestRubyChaos(t *testing.T) {
 	k.opt.CellTimeout = 3 * time.Second
 	k.opt.CellMemory = 256 << 20
 	ok := []gen.Code{ruby("x = 41\n", 2), golang("y := x + 1\ny\n", 5)}
-	for _, c := range []struct {
+	type chaos struct {
 		name string
 		cell gen.Code
 		want string
-	}{
+	}
+	// rbgo has no Process.kill on Windows; a Go cell kills its worker
+	// everywhere.
+	var killRuby []chaos
+	if goruntime.GOOS != "windows" {
+		killRuby = append(killRuby, chaos{"a worker killed mid-cell, from Ruby", ruby("Process.kill(:KILL, Process.pid)\nsleep 5\n", 9), "the worker stopped"})
+	}
+	for _, c := range append(killRuby, []chaos{
+		{"a worker killed mid-cell, from Go", golang("import (\n\t\"os\"\n\t\"time\"\n)\n\n_p, _ := os.FindProcess(os.Getpid())\n_ = _p.Kill()\ntime.Sleep(5 * time.Second)\n", 9), "the worker stopped"},
 		{"an endless Ruby loop", ruby("loop { }\n", 9), "stopped: the cell ran longer than 3s"},
 		{"an endless Go loop", golang("for {\n}\n", 9), "stopped: the cell ran longer than 3s"},
-		{"a worker killed mid-cell", ruby("Process.kill(:KILL, Process.pid)\nsleep 5\n", 9), "the worker stopped"},
 		{"exit! in Ruby", ruby("exit!(3)\n", 9), "SystemExit"},
 		{"a Go panic", golang("var m map[string]int\nm[\"a\"] = 1\n", 9), "assignment to entry in nil map"},
 		{"a huge Ruby allocation", ruby("'x' * (2**62)\n", 9), "failed to allocate memory (NoMemoryError)"},
 		{"a Ruby cell over its memory limit", ruby("big = Array.new(60_000_000) { |i| i * 0.5 }\n", 9), "stopped: the cell went over its memory limit of 268435456 bytes"},
 		{"a Go cell over its memory limit", golang("big := make([][]float64, 0)\nfor i := 0; i < 1000; i++ {\n\tbig = append(big, make([]float64, 1<<20))\n}\n", 9), "stopped: the cell went over its memory limit"},
 		{"runaway recursion", ruby("def f(n) = f(n + 1)\nf(0)\n", 9), "stack level too deep (SystemStackError)"},
-	} {
+	}...) {
 		t.Run(c.name, func(t *testing.T) {
 			rep, err := k.Run(append(append([]gen.Code{}, ok...), c.cell))
 			if err != nil {

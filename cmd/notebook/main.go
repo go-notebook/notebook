@@ -18,6 +18,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -66,6 +67,14 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 	if fs.NArg() != 1 {
 		return errors.New(usage)
+	}
+	// In MiB: a value whose byte count overflows an int64 would wrap, to no
+	// limit or to a tiny one.
+	if *memory < 0 || *memory > math.MaxInt64>>20 {
+		return fmt.Errorf("-memory %d: out of range (0 to %d MiB)", *memory, int64(math.MaxInt64>>20))
+	}
+	if *timeout < 0 {
+		return fmt.Errorf("-timeout %s: negative", *timeout)
 	}
 	path := fs.Arg(0)
 	k, err := newKernel(path, *work, *src, *timeout, *memory<<20)
@@ -125,15 +134,20 @@ func newKernel(path, work, src string, timeout time.Duration, memory int64) (*ke
 	} else {
 		opt.RuntimeVersion = version
 	}
-	// NOTEBOOK_REPLACE points modules of the work module at local
-	// checkouts — module=dir pairs separated by commas — to run a notebook
-	// against a library being changed.
-	for _, pair := range strings.Split(os.Getenv("NOTEBOOK_REPLACE"), ",") {
+	addReplaces(opt.Replace, os.Getenv("NOTEBOOK_REPLACE"))
+	return kernel.New(opt)
+}
+
+// addReplaces reads NOTEBOOK_REPLACE, which points modules of the work
+// module at local checkouts — module=dir pairs separated by commas — to run
+// a notebook against a library being changed. A pair without "=" is
+// ignored; a relative directory is made absolute.
+func addReplaces(replace map[string]string, env string) {
+	for _, pair := range strings.Split(env, ",") {
 		if mod, d, ok := strings.Cut(pair, "="); ok {
-			opt.Replace[mod], _ = filepath.Abs(d) // fails only without a working directory
+			replace[mod], _ = filepath.Abs(d) // fails only without a working directory
 		}
 	}
-	return kernel.New(opt)
 }
 
 // Seams for tests: where watch stops (never, from the command line), the

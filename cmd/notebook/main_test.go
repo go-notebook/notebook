@@ -289,3 +289,56 @@ func TestRuntimeSourceFromTree(t *testing.T) {
 	}
 	_ = k.Close()
 }
+
+// A limit out of range is refused before anything runs: -memory is in MiB,
+// and a byte count past an int64 would wrap to no limit.
+func TestLimitsOutOfRange(t *testing.T) {
+	for _, args := range [][]string{
+		{"run", "-memory", "-1", "nb.md"},
+		{"run", "-memory", "8796093022208", "nb.md"}, // 2^43 MiB = 2^63 bytes
+		{"run", "-timeout", "-1s", "nb.md"},
+	} {
+		var out, errOut bytes.Buffer
+		err := run(args, &out, &errOut)
+		if err == nil || !strings.Contains(err.Error(), args[1]) {
+			t.Errorf("%v: got %v, want an error naming %s", args, err, args[1])
+		}
+	}
+}
+
+// NOTEBOOK_REPLACE: module=dir pairs, a relative dir made absolute, a pair
+// without "=" ignored; and newKernel reads it.
+func TestNotebookReplace(t *testing.T) {
+	abs := filepath.Join(t.TempDir(), "rb")
+	got := map[string]string{"github.com/go-notebook/notebook": "/runtime"}
+	addReplaces(got, "github.com/go-scikit/ruby="+abs+",nonsense,example.com/rel=rel/dir")
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"github.com/go-notebook/notebook": "/runtime",
+		"github.com/go-scikit/ruby":       abs,
+		"example.com/rel":                 filepath.Join(wd, "rel", "dir"),
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for m, d := range want {
+		if got[m] != d {
+			t.Errorf("%s: got %q, want %q", m, got[m], d)
+		}
+	}
+	empty := map[string]string{}
+	addReplaces(empty, "")
+	if len(empty) != 0 {
+		t.Errorf("empty variable: %v", empty)
+	}
+
+	t.Setenv("NOTEBOOK_REPLACE", "github.com/go-scikit/ruby="+abs)
+	k, err := newKernel("nb.md", t.TempDir(), "", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = k.Close()
+}

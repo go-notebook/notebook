@@ -61,3 +61,15 @@ func TestHTML(t *testing.T) {
 type failing struct{}
 
 func (failing) Write([]byte) (int, error) { return 0, errors.New("disk full") }
+
+// A Ruby cell is highlighted with the Ruby lexer.
+func TestRubyHighlight(t *testing.T) {
+	nb := format.Parse("```ruby\nputs :sym\n```\n")
+	var b strings.Builder
+	if err := HTML(&b, "t", nb, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), `<span class="ss">:sym</span>`) {
+		t.Fatalf("not highlighted as Ruby:\n%s", b.String())
+	}
+}

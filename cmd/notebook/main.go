@@ -18,6 +18,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -59,14 +60,24 @@ func run(args []string, stdout, stderr io.Writer) error {
 	src := fs.String("runtime-src", "", "use the go-notebook source tree at this path instead of a released runtime")
 	interval := fs.Duration("interval", 300*time.Millisecond, "how often watch and serve look at the file")
 	addr := fs.String("addr", "127.0.0.1:8888", "where serve listens")
+	timeout := fs.Duration("timeout", 0, "stop a cell that runs longer than this (0: no limit)")
+	memory := fs.Int64("memory", 0, "stop a cell whose worker holds more than this many MiB (0: no limit)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
 		return errors.New(usage)
 	}
+	// In MiB: a value whose byte count overflows an int64 would wrap, to no
+	// limit or to a tiny one.
+	if *memory < 0 || *memory > math.MaxInt64>>20 {
+		return fmt.Errorf("-memory %d: out of range (0 to %d MiB)", *memory, int64(math.MaxInt64>>20))
+	}
+	if *timeout < 0 {
+		return fmt.Errorf("-timeout %s: negative", *timeout)
+	}
 	path := fs.Arg(0)
-	k, err := newKernel(path, *work, *src)
+	k, err := newKernel(path, *work, *src, *timeout, *memory<<20)
 	if err != nil {
 		return err
 	}
@@ -102,7 +113,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 }
 
 // newKernel opens the kernel for a notebook, with its work directory.
-func newKernel(path, work, src string) (*kernel.Kernel, error) {
+func newKernel(path, work, src string, timeout time.Duration, memory int64) (*kernel.Kernel, error) {
 	if work == "" {
 		abs, _ := filepath.Abs(path) // fails only without a working directory; the name still keys the cache
 		cache, err := os.UserCacheDir()
@@ -112,17 +123,31 @@ func newKernel(path, work, src string) (*kernel.Kernel, error) {
 		sum := sha256.Sum256([]byte(abs))
 		work = filepath.Join(cache, "go-notebook", hex.EncodeToString(sum[:8]))
 	}
-	opt := kernel.Options{Dir: work, Name: filepath.Base(path)}
+	opt := kernel.Options{Dir: work, Name: filepath.Base(path), CellTimeout: timeout, CellMemory: memory}
 	version, dir := runtimeSource()
 	if src != "" {
 		dir = src
 	}
+	opt.Replace = map[string]string{}
 	if dir != "" {
-		opt.Replace = map[string]string{"github.com/go-notebook/notebook": dir}
+		opt.Replace["github.com/go-notebook/notebook"] = dir
 	} else {
 		opt.RuntimeVersion = version
 	}
+	addReplaces(opt.Replace, os.Getenv("NOTEBOOK_REPLACE"))
 	return kernel.New(opt)
+}
+
+// addReplaces reads NOTEBOOK_REPLACE, which points modules of the work
+// module at local checkouts — module=dir pairs separated by commas — to run
+// a notebook against a library being changed. A pair without "=" is
+// ignored; a relative directory is made absolute.
+func addReplaces(replace map[string]string, env string) {
+	for _, pair := range strings.Split(env, ",") {
+		if mod, d, ok := strings.Cut(pair, "="); ok {
+			replace[mod], _ = filepath.Abs(d) // fails only without a working directory
+		}
+	}
 }
 
 // Seams for tests: where watch stops (never, from the command line), the
@@ -169,7 +194,7 @@ func once(k *kernel.Kernel, path string) (*format.Notebook, *kernel.Report, erro
 	var cells []gen.Code
 	for _, c := range nb.Cells {
 		if c.Kind == format.Code {
-			cells = append(cells, gen.Code{Source: c.Source, Line: c.Line})
+			cells = append(cells, gen.Code{Source: c.Source, Line: c.Line, Lang: c.Lang})
 		}
 	}
 	rep, err := k.Run(cells)

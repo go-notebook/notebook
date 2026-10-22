@@ -128,3 +128,19 @@ func TestSetSource(t *testing.T) {
 		t.Errorf("rebuilt fence: %q", nb.String())
 	}
 }
+
+// A ruby fence is a Ruby code cell; the notebook reads back byte for byte.
+func TestRubyCells(t *testing.T) {
+	src := "# T\n\n~~~ruby opts\nx = 1\n~~~\n\n```go\ny := 2\n```\n```python\nz = 3\n```\n"
+	nb := Parse(src)
+	if len(nb.Cells) != 5 || nb.Cells[4].Kind != Prose || nb.Cells[1].Lang != "ruby" || nb.Cells[1].Info != "opts" || nb.Cells[3].Lang != "go" || nb.Cells[3].Kind != Code {
+		t.Fatalf("cells: %+v", nb.Cells)
+	}
+	if nb.String() != src {
+		t.Fatalf("round trip:\n%q", nb.String())
+	}
+	nb = &Notebook{Cells: []Cell{NewCodeIn("ruby", "puts 1"), NewCode("x := 1")}}
+	if got := nb.String(); got != "```ruby\nputs 1\n```\n```go\nx := 1\n```\n" {
+		t.Fatalf("new cells: %q", got)
+	}
+}

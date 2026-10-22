@@ -99,10 +99,7 @@ func (e *editor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<24))
 		err = e.edit(func(nb *format.Notebook) error { return setSource(nb, i, string(body)) })
 	case "insert":
-		kind := format.Code
-		if r.URL.Query().Get("kind") == "prose" {
-			kind = format.Prose
-		}
+		kind := r.URL.Query().Get("kind")
 		err = e.edit(func(nb *format.Notebook) error { return insertAfter(nb, i, kind) })
 	case "delete":
 		err = e.edit(func(nb *format.Notebook) error { return deleteCell(nb, i) })
@@ -171,16 +168,20 @@ func setSource(nb *format.Notebook, i int, src string) error {
 	return nil
 }
 
-// insertAfter adds an empty cell of the given kind after cell i (before the
-// first cell when i is -1). A text cell inserted next to text joins it when
-// the notebook is read back: only a code cell separates two text cells.
-func insertAfter(nb *format.Notebook, i int, kind format.Kind) error {
+// insertAfter adds an empty cell of the given kind — "prose", "ruby", or
+// anything else for Go — after cell i (before the first cell when i is -1).
+// A text cell inserted next to text joins it when the notebook is read back:
+// only a code cell separates two text cells.
+func insertAfter(nb *format.Notebook, i int, kind string) error {
 	if i < -1 || i >= len(nb.Cells) {
 		return fmt.Errorf("%w: no cell %d", errEdit, i)
 	}
 	c := format.NewCode("")
-	if kind == format.Prose {
+	switch kind {
+	case "prose":
 		c = format.Cell{Kind: format.Prose, Source: "\n"}
+	case "ruby":
+		c = format.NewCodeIn("ruby", "")
 	}
 	nb.Cells = append(nb.Cells[:i+1], append([]format.Cell{c}, nb.Cells[i+1:]...)...)
 	return nil

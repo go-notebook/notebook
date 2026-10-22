@@ -44,7 +44,8 @@ type Chunk struct {
 // Cell is the analysis of one code cell.
 type Cell struct {
 	Index  int    // position among the notebook's code cells
-	Source string // the cell's Go source
+	Source string // the cell's source
+	Lang   string // Go, or Ruby (see AnalyzeRubyCell)
 
 	Chunks []Chunk
 
@@ -56,6 +57,13 @@ type Cell struct {
 	Funcs   []string
 	Types   []string
 	Imports map[string]string
+
+	// Consts are the constants, classes and modules a Ruby cell defines.
+	Consts []string
+
+	// RubyDisplay reports that a Ruby cell ends in an expression, whose value
+	// it shows. (A Go cell's is Display.)
+	RubyDisplay bool
 
 	// Uses lists the free identifiers the cell reads, sorted: notebook
 	// variables, package names other cells import, builtins, and names
@@ -96,7 +104,7 @@ func (e Error) Error() string { return fmt.Sprintf("cell %d: offset %d: %s", e.C
 
 // AnalyzeCell analyses the source of code cell number index.
 func AnalyzeCell(index int, src string) *Cell {
-	c := &Cell{Index: index, Source: src, Imports: map[string]string{}}
+	c := &Cell{Index: index, Source: src, Lang: Go, Imports: map[string]string{}}
 	c.Chunks = chunk(src)
 	uses := map[string]bool{}
 	var stmtMask []byte

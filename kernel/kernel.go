@@ -36,8 +36,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"github.com/go-notebook/notebook/analysis"
 	"github.com/go-notebook/notebook/gen"
 	"github.com/go-notebook/notebook/runtime"
 )
@@ -58,6 +60,21 @@ type Options struct {
 	// RuntimeVersion is the version of github.com/go-notebook/notebook the
 	// work module requires. Empty means v0.0.0, which needs a Replace.
 	RuntimeVersion string
+
+	// RubyVersion is the version of github.com/go-scikit/ruby the work
+	// module requires when the notebook has Ruby cells; empty means
+	// DefaultRubyVersion.
+	RubyVersion string
+
+	// CellTimeout bounds how long one cell may run: a cell still running
+	// after it — an endless loop, in Go or in Ruby — has its worker killed
+	// and fails, and the next Run starts a new worker. Zero means no bound.
+	CellTimeout time.Duration
+
+	// CellMemory bounds, in bytes, the heap a worker's cells may hold. The
+	// Go garbage collector keeps under it as long as it can; a cell that
+	// holds more has its worker stopped and fails. Zero means no bound.
+	CellMemory int64
 }
 
 // Result is the outcome of one code cell.
@@ -96,6 +113,17 @@ type Kernel struct {
 	values  map[string]value  // by variable
 	types   *importer
 	env     keyEnv
+
+	// ruby reports Ruby cells in the notebook; rubyTypes are the Go types
+	// their variables had when they last ran (gen.Options.RubyTypes), kept in
+	// the work directory, and typesChanged that a cell of this Run changed
+	// one.
+	ruby         bool
+	rubyTypes    map[string]string
+	typesChanged bool
+	waiting      bool            // a cell of this Run was deferred, or reads a type that changed
+	exitCode     int             // the exit status of the last worker that ended
+	changed      map[string]bool // the Ruby variables whose type this Run changed
 }
 
 // value is a kept variable: its encoding, or nil if it is volatile, and the
@@ -113,7 +141,11 @@ func New(opt Options) (*Kernel, error) {
 	if err := os.MkdirAll(opt.Dir, 0o755); err != nil {
 		return nil, err
 	}
-	return &Kernel{opt: opt, results: map[string]Result{}, values: map[string]value{}}, nil
+	k := &Kernel{opt: opt, results: map[string]Result{}, values: map[string]value{}, rubyTypes: map[string]string{}}
+	if b, err := os.ReadFile(k.typesPath()); err == nil {
+		_ = json.Unmarshal(b, &k.rubyTypes)
+	}
+	return k, nil
 }
 
 // Close stops the worker.
@@ -123,14 +155,46 @@ func (k *Kernel) Close() error {
 
 // Run brings the results of the given code cells up to date.
 func (k *Kernel) Run(cells []gen.Code) (*Report, error) {
+	rep, err := k.run(cells)
+	if err != nil || !k.typesChanged || !k.waiting {
+		return rep, err
+	}
+	// A Ruby cell gave a variable a Go type the program did not declare it
+	// with — the first time it ran, or since it changed — and Go cells wait
+	// for it: they are compiled again with the type, and only they run. (A
+	// type no Go cell waits for is declared on the next Run, when the
+	// program is built anyway.)
+	first := rep
+	rep, err = k.run(cells)
+	if rep != nil {
+		rep.Build += first.Build
+		rep.Built = true
+		// One Run, seen once: a cell that ran in the first pass ran.
+		for i, r := range first.Results {
+			if r.Ran && i < len(rep.Results) && rep.Results[i].Kept {
+				rep.Results[i].Ran, rep.Results[i].Kept, rep.Results[i].Took = true, false, r.Took
+			}
+		}
+	}
+	return rep, err
+}
+
+// run is one pass of Run.
+func (k *Kernel) run(cells []gen.Code) (*Report, error) {
 	start := time.Now()
+	k.typesChanged, k.waiting, k.changed = false, false, map[string]bool{}
+	k.ruby = false
+	for _, c := range cells {
+		k.ruby = k.ruby || c.Lang == analysis.Ruby
+	}
 	rep := &Report{}
 	paths := importPaths(cells)
 	if err := k.prepareModule(paths); err != nil {
 		return nil, err
 	}
-	prog := gen.Generate(k.opt.Name, cells, k.types)
+	prog := gen.GenerateWith(k.opt.Name, cells, k.types, gen.Options{RubyTypes: k.rubyTypes})
 	rep.Diags = prog.Diags
+	k.waiting = len(prog.Deferred) > 0
 	rep.Results = make([]Result, len(cells))
 	for i := range rep.Results {
 		rep.Results[i].Cell = i
@@ -164,6 +228,7 @@ func (k *Kernel) Run(cells []gen.Code) (*Report, error) {
 	rep.Build = time.Since(start)
 	k.keys = cellKeys(cells, prog, k.env)
 	k.execute(prog, rep, nil)
+	k.waiting = k.waiting || readsChanged(prog, k.changed)
 	return rep, nil
 }
 
@@ -174,7 +239,7 @@ func (k *Kernel) RunCell(cells []gen.Code, i int) (*Report, error) {
 	if err != nil || len(rep.Diags) > 0 {
 		return rep, err
 	}
-	prog := gen.Generate(k.opt.Name, cells, k.types)
+	prog := gen.GenerateWith(k.opt.Name, cells, k.types, gen.Options{RubyTypes: k.rubyTypes})
 	force := map[int]bool{}
 	for _, c := range prog.Graph.Downstream(i) {
 		force[c] = true
@@ -282,7 +347,20 @@ func (k *Kernel) restore(names []string, key string) bool {
 // runCell asks the worker to run cell i. Took is measured in the worker,
 // around the cell alone: not the round trip, nor a fresh worker's start.
 func (k *Kernel) runCell(i int) Result {
+	var timedOut atomic.Bool
+	if d := k.opt.CellTimeout; d > 0 {
+		w := k.worker.Process
+		t := time.AfterFunc(d, func() {
+			timedOut.Store(true)
+			_ = w.Kill()
+		})
+		defer t.Stop()
+	}
 	r := k.call(runtime.Request{Op: "run", Cell: i})
+	if timedOut.Load() {
+		r.Error = fmt.Sprintf("stopped: the cell ran longer than %s, the limit; its worker was killed", k.opt.CellTimeout)
+	}
+	k.learn(r.Notes)
 	return Result{Cell: i, Output: r.Output, Display: r.Display, Error: r.Error, Took: r.Took}
 }
 
@@ -315,8 +393,12 @@ func (k *Kernel) call(req runtime.Request) runtime.Reply {
 // died handles a worker that stopped answering (a cell called os.Exit, or
 // crashed outside the recovered call).
 func (k *Kernel) died(err error) runtime.Reply {
+	k.exitCode = 0
 	_ = k.stop()
 	k.src = nil
+	if k.exitCode == runtime.ExitMemory {
+		return runtime.Reply{Error: fmt.Sprintf("stopped: the cell went over its memory limit of %d bytes; its worker was killed", k.opt.CellMemory)}
+	}
 	msg := "the worker stopped"
 	if err != nil {
 		msg += ": " + err.Error()
@@ -352,7 +434,11 @@ func cellKeys(cells []gen.Code, prog *gen.Program, env keyEnv) []string {
 		h := sha256.New()
 		// The cell's position is not part of it: moving a cell runs nothing.
 		fmt.Fprintf(h, "%s\x00%s\x00%s\x00", cells[i].Source, strings.Join(pkgs, ","), env.toolchain)
-		if !allStandard(pkgs) {
+		if c.Lang == analysis.Ruby {
+			// A Ruby cell runs on rbgo and the go-scikit bindings, whose
+			// versions are in go.sum.
+			fmt.Fprintf(h, "ruby\x00%s\x00", env.sums)
+		} else if !allStandard(pkgs) {
 			// Any module could be behind any non-standard package,
 			// transitively: the whole go.sum is the honest summary.
 			fmt.Fprintf(h, "%s\x00", env.sums)
@@ -379,9 +465,11 @@ func allStandard(paths []string) bool {
 
 // importPaths returns the sorted import paths of the cells.
 func importPaths(cells []gen.Code) []string {
-	srcs := make([]string, len(cells))
-	for i, c := range cells {
-		srcs[i] = c.Source
+	var srcs []string
+	for _, c := range cells {
+		if c.Lang != analysis.Ruby {
+			srcs = append(srcs, c.Source)
+		}
 	}
 	set := map[string]bool{}
 	for _, c := range analyzeImports(srcs) {
@@ -420,7 +508,7 @@ var (
 	goBuild   = func(dir, out string) ([]byte, error) {
 		cmd := exec.Command("go", "build", "-o", out, ".")
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GOWORK=off")
+		cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS="+tagsFlag)
 		return cmd.CombinedOutput()
 	}
 )
@@ -430,6 +518,9 @@ func (k *Kernel) start() error {
 	cmd := exec.Command(k.binary())
 	cmd.Dir = k.opt.Dir
 	cmd.Stderr = os.Stderr
+	if k.opt.CellMemory > 0 {
+		cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", runtime.MemoryEnv, k.opt.CellMemory))
+	}
 	// The pipes fail only when Stdin or Stdout is already set.
 	in, _ := cmd.StdinPipe()
 	out, _ := cmd.StdoutPipe()
@@ -454,7 +545,47 @@ func (k *Kernel) stop() error {
 	k.worker = nil
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
+		k.exitCode = ee.ExitCode()
 		return nil // it may have died first; that was reported
 	}
 	return err
+}
+
+// learn records the Go types a Ruby cell gave its variables.
+func (k *Kernel) learn(notes map[string]string) {
+	changed := false
+	for name, typ := range notes {
+		if k.rubyTypes[name] != typ {
+			k.rubyTypes[name] = typ
+			changed = true
+		}
+	}
+	if !changed {
+		return
+	}
+	for name := range notes {
+		k.changed[name] = true
+	}
+	k.typesChanged = true
+	b, _ := json.Marshal(k.rubyTypes)
+	_ = writeFile(k.typesPath(), b, 0o644)
+}
+
+// typesPath is where the Ruby variables' Go types are kept.
+func (k *Kernel) typesPath() string { return filepath.Join(k.opt.Dir, "ruby-types.json") }
+
+// readsChanged reports whether a Go cell reads one of the Ruby variables
+// whose type changed: it was compiled against the old type.
+func readsChanged(prog *gen.Program, changed map[string]bool) bool {
+	for _, c := range prog.Graph.Cells {
+		if c.Lang == analysis.Ruby {
+			continue
+		}
+		for _, u := range c.Uses {
+			if o, ok := prog.Graph.Owner[u]; ok && changed[u] && prog.Graph.Cells[o].Lang == analysis.Ruby {
+				return true
+			}
+		}
+	}
+	return false
 }

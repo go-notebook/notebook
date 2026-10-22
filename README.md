@@ -11,7 +11,7 @@
 
 🌐 **[Website](https://go-notebook.github.io)** · 📚 **[Documentation](https://go-notebook.github.io/docs/)**
 
-A notebook is a Markdown file whose ` ```go ` blocks are cells. The kernel:
+A notebook is a Markdown file whose ` ```go ` blocks are cells — and ` ```ruby ` blocks too, in a pure-Go Ruby with the same numerical libraries, sharing their variables with the Go cells. The kernel:
 
 - **compiles it** into a real Go program, so cells run at native speed;
 - **orders the cells by what they use**, worked out from the code itself as marimo does for Python, not by the order you ran them in;
@@ -89,6 +89,17 @@ len(w) // the final expression is shown
 - A final call returning `(value, error)` shows the value; a non-nil error fails the cell.
 - A value with a `Display() map[string][]byte` method shows itself as HTML, SVG or PNG.
 - Errors point at the notebook's own lines. A panic stops the cells that read the failing one, and they say why.
+
+## Ruby cells
+
+A ` ```ruby ` block runs in [rbgo](https://github.com/go-embedded-ruby/ruby), a Ruby written in Go, with the [go-scikit bindings](https://github.com/go-scikit/ruby): `Stats`, `Special`, `Optimize`, `Integrate`, `DataFrame` and `Plot` over the same Go libraries, and rbgo's `NDArray`. Ruby cells share one interpreter, so their top-level locals persist from cell to cell. The two languages share their variables:
+
+- A Go variable a Ruby cell reads becomes a Ruby local of the same name. A `[]float64` becomes an Array, and an `*ndarray.Array` stays the same NDArray.
+- A Ruby local a Go cell reads becomes a Go variable typed from its value: a Float is a `float64`, an Array of Floats a `[]float64`, an NDArray an `*ndarray.Array`, a fitted `Stats::Gamma` the `stats.Gamma` itself.
+
+Dependencies, caching and re-runs work across languages as for Go alone: a Ruby cell re-runs only when it or a cell it reads changes. The last expression shows its `inspect`, and a `Plot` figure shows as SVG. [examples/mixed.md](examples/mixed.md) draws data in Go and fits and plots it in Ruby; the exact rules are in [docs/design.md](docs/design.md#ruby-cells).
+
+A notebook runs with your rights, in either language. Every cell runs in a worker process of its own: `-timeout 30s` kills a worker whose cell runs longer, and `-memory 512` stops one whose cells hold more than 512 MiB of Go heap; the cell fails, and the next run starts a new worker. Both are off by default ([what a cell can do, and what stops it](docs/design.md#what-a-cell-can-do-and-what-stops-it)).
 
 ## How it works
 

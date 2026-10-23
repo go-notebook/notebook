@@ -69,6 +69,20 @@ notebook serve analysis.md   # the same in your browser at http://127.0.0.1:8888
 
 Edit the `.md` in any editor, or in the page `serve` shows (double-click a cell, Ctrl/⌘+Enter to save): the file is the only source of truth, and only what changed runs again.
 
+Flags are POSIX, and each verb lists its own with `notebook <verb> --help`:
+
+| Flag | Verbs | |
+|---|---|---|
+| `-o`, `--output FILE` | html, watch | the page to write (default: the notebook's name with `.html`) |
+| `--addr HOST:PORT` | serve | where to listen (default `127.0.0.1:8888`) |
+| `--interval D` | watch, serve | how often the file is looked at (default `300ms`) |
+| `-t`, `--timeout D` | all | stop a cell that runs longer (default: no limit) |
+| `-m`, `--memory MiB` | all | stop a cell whose worker holds more heap (default: no limit) |
+| `-w`, `--work DIR` | all | the work directory (default: under the user cache directory) |
+| `--runtime-src DIR` | all | run against a go-notebook source tree instead of a released runtime |
+
+Releases up to v0.3 read flags with one dash (`-timeout 30s`); that spelling is still accepted, with a note on stderr.
+
 [examples/spectrum.md](examples/spectrum.md) finds two tones in Gaussian noise with [go-ndarray](https://github.com/go-ndarray/ndarray) (arrays, `fft.RFFT`, a seeded generator that gives NumPy's numbers for the same seed) and draws the signal and its spectrum with [go-plot](https://github.com/go-plot/plot).
 
 ## Cells
@@ -99,7 +113,7 @@ A ` ```ruby ` block runs in [rbgo](https://github.com/go-embedded-ruby/ruby), a 
 
 Dependencies, caching and re-runs work across languages as for Go alone: a Ruby cell re-runs only when it or a cell it reads changes. The last expression shows its `inspect`, and a `Plot` figure shows as SVG. [examples/mixed.md](examples/mixed.md) draws data in Go and fits and plots it in Ruby; the exact rules are in [docs/design.md](docs/design.md#ruby-cells).
 
-A notebook runs with your rights, in either language. Every cell runs in a worker process of its own: `-timeout 30s` kills a worker whose cell runs longer, and `-memory 512` stops one whose cells hold more than 512 MiB of Go heap; the cell fails, and the next run starts a new worker. Both are off by default ([what a cell can do, and what stops it](docs/design.md#what-a-cell-can-do-and-what-stops-it)).
+A notebook runs with your rights, in either language. Every cell runs in a worker process of its own: `--timeout 30s` kills a worker whose cell runs longer, and `--memory 512` stops one whose cells hold more than 512 MiB of Go heap; the cell fails, and the next run starts a new worker. Both are off by default ([what a cell can do, and what stops it](docs/design.md#what-a-cell-can-do-and-what-stops-it)).
 
 ## How it works
 

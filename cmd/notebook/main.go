@@ -8,6 +8,9 @@
 //
 // Results are kept between invocations in a work directory under the user's
 // cache directory, so a second run only runs the cells that changed.
+//
+// Flags are POSIX: --timeout 5s, -t 5s. The single-dash long spelling of
+// earlier releases (-timeout 5s) is still read, with a note on stderr.
 package main
 
 import (
@@ -15,7 +18,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"math"
@@ -26,90 +28,222 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/go-notebook/notebook/export"
 	"github.com/go-notebook/notebook/format"
 	"github.com/go-notebook/notebook/gen"
 	"github.com/go-notebook/notebook/kernel"
 )
 
+// osExit is os.Exit, replaced by tests.
+var osExit = os.Exit
+
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "notebook:", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
-const usage = `usage: notebook run|html|watch|serve [flags] notebook.md
-
-  run    run the notebook and print each cell's results
-  html   run it and write the results as a page next to it (or -o)
-  watch  run it again every time the file changes, keeping the page current
-  serve  run it again every time the file changes, showing it live in a browser (-addr)
-`
-
-// run is the command, on explicit streams.
+// run is the command, on explicit streams: the arguments are read with the
+// single-dash long flags of earlier releases rewritten, then executed.
 func run(args []string, stdout, stderr io.Writer) error {
-	if len(args) < 1 {
-		return errors.New(usage)
+	root := RootCmd()
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	root.SetArgs(legacy(root, args, stderr))
+	return root.Execute()
+}
+
+// options are the flags of the verbs; each verb registers those it reads.
+type options struct {
+	out, work, src, addr string
+	interval, timeout    time.Duration
+	memory               int64
+	watching             bool // the verb reads --interval
+}
+
+// RootCmd returns the notebook command with its four verbs.
+func RootCmd() *cobra.Command {
+	root := &cobra.Command{
+		Use:   "notebook",
+		Short: "Run Go notebooks: Markdown files whose ```go and ```ruby blocks are cells",
+		Long: `notebook runs Go notebooks: Markdown files whose ` + "```go and ```ruby" + ` blocks are cells.
+
+Results are kept between invocations in a work directory under the user's
+cache directory, so a second run only runs the cells that changed.`,
+		Example: `  notebook run analysis.md
+  notebook html -o report.html analysis.md
+  notebook serve --addr 127.0.0.1:9000 --timeout 30s --memory 2048 analysis.md`,
+		Version:       version(),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			return errors.New("missing command: run, html, watch or serve (see notebook --help)")
+		},
 	}
-	verb := args[0]
-	fs := flag.NewFlagSet(verb, flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	out := fs.String("o", "", "the HTML file to write (html, watch)")
-	work := fs.String("work", "", "the work directory (default: under the user cache directory)")
-	src := fs.String("runtime-src", "", "use the go-notebook source tree at this path instead of a released runtime")
-	interval := fs.Duration("interval", 300*time.Millisecond, "how often watch and serve look at the file")
-	addr := fs.String("addr", "127.0.0.1:8888", "where serve listens")
-	timeout := fs.Duration("timeout", 0, "stop a cell that runs longer than this (0: no limit)")
-	memory := fs.Int64("memory", 0, "stop a cell whose worker holds more than this many MiB (0: no limit)")
-	if err := fs.Parse(args[1:]); err != nil {
-		return err
+	root.AddCommand(
+		verb("run", "Run the notebook and print each cell's results", "",
+			func(cmd *cobra.Command, k *kernel.Kernel, path string, o *options) error {
+				nb, rep, err := once(k, path)
+				if err != nil {
+					return err
+				}
+				printReport(cmd.OutOrStdout(), nb, rep)
+				return failed(rep)
+			}),
+		verb("html", "Run the notebook and write its results as a page next to it (or --output)", "o",
+			func(cmd *cobra.Command, k *kernel.Kernel, path string, o *options) error {
+				nb, rep, err := once(k, path)
+				if err != nil {
+					return err
+				}
+				if err := writeHTML(o.out, path, nb, rep); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "wrote %s\n", o.out)
+				return failed(rep)
+			}),
+		verb("watch", "Run the notebook again every time it changes, keeping its page current", "oi",
+			func(cmd *cobra.Command, k *kernel.Kernel, path string, o *options) error {
+				page := func(nb *format.Notebook, rep *kernel.Report) error { return writeHTML(o.out, path, nb, rep) }
+				return watch(k, path, o.interval, cmd.OutOrStdout(), stopWatch, page)
+			}),
+		verb("serve", "Run the notebook again every time it changes, showing it live in a browser", "ai",
+			func(cmd *cobra.Command, k *kernel.Kernel, path string, o *options) error {
+				return serve(k, path, o.addr, o.interval, cmd.OutOrStdout(), stopWatch)
+			}),
+	)
+	return root
+}
+
+// verb builds one verb. Every verb takes the work directory, the runtime
+// source and the cell limits; extra lists the flags it adds: o (--output),
+// i (--interval), a (--addr).
+func verb(name, short, extra string,
+	do func(cmd *cobra.Command, k *kernel.Kernel, path string, o *options) error) *cobra.Command {
+	o := &options{}
+	cmd := &cobra.Command{
+		Use:   name + " [flags] notebook.md",
+		Short: short,
+		Args: func(_ *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return fmt.Errorf("%s takes one notebook file, got %d argument(s)", name, len(args))
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path := args[0]
+			k, err := o.kernel(path)
+			if err != nil {
+				return err
+			}
+			defer k.Close()
+			if o.out == "" {
+				o.out = strings.TrimSuffix(path, filepath.Ext(path)) + ".html"
+			}
+			return do(cmd, k, path, o)
+		},
 	}
-	if fs.NArg() != 1 {
-		return errors.New(usage)
+	f := cmd.Flags()
+	f.StringVarP(&o.work, "work", "w", "", "the work directory (default: under the user cache directory)")
+	f.StringVar(&o.src, "runtime-src", "", "use the go-notebook source tree at this path instead of a released runtime")
+	f.DurationVarP(&o.timeout, "timeout", "t", 0, "stop a cell that runs longer than this (0: no limit)")
+	f.Int64VarP(&o.memory, "memory", "m", 0, "stop a cell whose worker holds more than this many MiB (0: no limit)")
+	if strings.Contains(extra, "o") {
+		f.StringVarP(&o.out, "output", "o", "", "the HTML file to write (default: the notebook's name with .html)")
 	}
+	if strings.Contains(extra, "i") {
+		o.watching = true
+		f.DurationVar(&o.interval, "interval", 300*time.Millisecond, "how often the file is looked at")
+	}
+	if strings.Contains(extra, "a") {
+		f.StringVar(&o.addr, "addr", "127.0.0.1:8888", "where to listen")
+	}
+	return cmd
+}
+
+// kernel checks the limits and opens the notebook's kernel.
+func (o *options) kernel(path string) (*kernel.Kernel, error) {
 	// In MiB: a value whose byte count overflows an int64 would wrap, to no
 	// limit or to a tiny one.
-	if *memory < 0 || *memory > math.MaxInt64>>20 {
-		return fmt.Errorf("-memory %d: out of range (0 to %d MiB)", *memory, int64(math.MaxInt64>>20))
+	if o.memory < 0 || o.memory > math.MaxInt64>>20 {
+		return nil, fmt.Errorf("--memory %d: out of range (0 to %d MiB)", o.memory, int64(math.MaxInt64>>20))
 	}
-	if *timeout < 0 {
-		return fmt.Errorf("-timeout %s: negative", *timeout)
+	if o.timeout < 0 {
+		return nil, fmt.Errorf("--timeout %s: negative", o.timeout)
 	}
-	path := fs.Arg(0)
-	k, err := newKernel(path, *work, *src, *timeout, *memory<<20)
+	// A ticker panics on a period that is not positive.
+	if o.watching && o.interval <= 0 {
+		return nil, fmt.Errorf("--interval %s: not positive", o.interval)
+	}
+	return newKernel(path, o.work, o.src, o.timeout, o.memory<<20)
+}
+
+// version is this build's module version, for --version.
+func version() string {
+	if bi, ok := readBuildInfo(); ok && bi.Main.Version != "" {
+		return bi.Main.Version
+	}
+	return "(devel)"
+}
+
+// legacy rewrites the single-dash long flags earlier releases accepted
+// (-timeout 5s, -work=dir), read by the standard flag package, into the
+// double-dash spelling pflag requires, and says so once on warn. pflag reads
+// one dash as one letter: left alone, -timeout would be -t with the value
+// "imeout".
+//
+// Only a name the verb registers is rewritten; anything else is left for
+// pflag to report in its own words. The value of a flag that takes one is
+// copied as it is, even when it starts with a dash, and so is everything
+// after a bare "--". No long name is made only of registered shorthand
+// letters (a test holds that), so a rewrite never changes what a cluster
+// such as -ot would have meant.
+func legacy(root *cobra.Command, args []string, warn io.Writer) []string {
+	cmd, _, err := root.Find(args)
 	if err != nil {
-		return err
+		return args // an unknown verb: cobra says so
 	}
-	defer k.Close()
-	if *out == "" {
-		*out = strings.TrimSuffix(path, filepath.Ext(path)) + ".html"
+	cmd.InitDefaultHelpFlag()
+	cmd.InitDefaultVersionFlag()
+	flags := cmd.Flags()
+	out := make([]string, 0, len(args))
+	var rewritten []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			out = append(out, args[i:]...)
+			break
+		}
+		if len(arg) < 2 || arg[0] != '-' {
+			out = append(out, arg)
+			continue
+		}
+		body, double := strings.CutPrefix(arg[1:], "-")
+		name, _, inline := strings.Cut(body, "=")
+		f := flags.Lookup(name)
+		switch {
+		case double:
+		case len(name) == 1:
+			f = flags.ShorthandLookup(name)
+		case f != nil:
+			arg = "-" + arg
+			rewritten = append(rewritten, name)
+		}
+		out = append(out, arg)
+		if f != nil && !inline && f.NoOptDefVal == "" && i+1 < len(args) {
+			i++
+			out = append(out, args[i])
+		}
 	}
-	switch verb {
-	case "run":
-		nb, rep, err := once(k, path)
-		if err != nil {
-			return err
-		}
-		printReport(stdout, nb, rep)
-		return failed(rep)
-	case "html":
-		nb, rep, err := once(k, path)
-		if err != nil {
-			return err
-		}
-		if err := writeHTML(*out, path, nb, rep); err != nil {
-			return err
-		}
-		fmt.Fprintf(stdout, "wrote %s\n", *out)
-		return failed(rep)
-	case "watch":
-		page := func(nb *format.Notebook, rep *kernel.Report) error { return writeHTML(*out, path, nb, rep) }
-		return watch(k, path, *interval, stdout, stopWatch, page)
-	case "serve":
-		return serve(k, path, *addr, *interval, stdout, stopWatch)
+	if len(rewritten) > 0 {
+		fmt.Fprintf(warn, "notebook: read -%s as --%s; flags take two dashes now\n",
+			strings.Join(rewritten, ", -"), strings.Join(rewritten, ", --"))
 	}
-	return errors.New(usage)
+	return out
 }
 
 // newKernel opens the kernel for a notebook, with its work directory.

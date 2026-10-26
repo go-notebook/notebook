@@ -109,10 +109,15 @@ type Program struct {
 
 // Request is a command from the kernel.
 type Request struct {
-	Op   string `json:"op"` // "run", "get", "set" or "exit"
+	Op   string `json:"op"` // "run", "get", "set" or "exit"; "eval" or "complete" to a session's worker
 	Cell int    `json:"cell,omitempty"`
 	Name string `json:"name,omitempty"`
 	Data []byte `json:"data,omitempty"`
+
+	// Source is the input to evaluate, or the word to complete, and Line the
+	// line it starts at in the session (ServeInterpreter).
+	Source string `json:"source,omitempty"`
+	Line   int    `json:"line,omitempty"`
 }
 
 // Reply answers a Request.
@@ -128,6 +133,15 @@ type Reply struct {
 	// Volatile reports a value that cannot be encoded (a func, a channel,
 	// unexported state): the cell that makes it has to run again instead.
 	Volatile bool `json:"volatile,omitempty"`
+
+	// For a session's worker (ServeInterpreter): More marks a reply that only
+	// carries Output, printed while the input runs, before the reply that
+	// ends it. Inspect is the input's value as irb shows it, Class the
+	// exception's class when it raised, Candidates the completions of a word.
+	More       bool     `json:"more,omitempty"`
+	Inspect    string   `json:"inspect,omitempty"`
+	Class      string   `json:"class,omitempty"`
+	Candidates []string `json:"candidates,omitempty"`
 }
 
 // Serve answers the kernel until it says exit or closes the input.

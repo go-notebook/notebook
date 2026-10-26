@@ -4,12 +4,15 @@ go 1.27.2
 
 require (
 	github.com/go-rouge/rouge v0.7.0
+	github.com/go-ruby-irb/irb v0.1.0
 	github.com/go-ruby-parser/parser v0.13.1
+	github.com/go-ruby-reline/reline v0.1.0
 	github.com/go-tex/math v0.50.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/yuin/goldmark v1.8.6
 	golang.org/x/sys v0.49.0
+	golang.org/x/term v0.47.0
 	golang.org/x/tools v0.52.0
 )
 

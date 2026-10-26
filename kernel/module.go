@@ -122,7 +122,7 @@ const tagsFlag = "-tags=rbgo_core"
 // DefaultRubyVersion is the version of github.com/go-scikit/ruby a work
 // module requires for its Ruby cells, unless Options.RubyVersion says
 // otherwise.
-const DefaultRubyVersion = "v0.1.1"
+const DefaultRubyVersion = "v0.1.2"
 
 // modulePath is this module's path, which the runtime package belongs to.
 const modulePath = "github.com/go-notebook/notebook"

@@ -65,6 +65,7 @@ notebook run analysis.md     # run it, print each cell's results
 notebook html analysis.md    # run it, write analysis.html (no scripts, no external resources; $\TeX$ math typeset by go-tex)
 notebook watch analysis.md   # run it on every save and keep analysis.html current
 notebook serve analysis.md   # the same in your browser at http://127.0.0.1:8888: edit cells there too
+notebook irb                 # an interactive Ruby session, as irb, on the same Ruby and bindings
 ```
 
 Edit the `.md` in any editor, or in the page `serve` shows (double-click a cell, Ctrl/⌘+Enter to save): the file is the only source of truth, and only what changed runs again.
@@ -80,6 +81,11 @@ Flags are POSIX, and each verb lists its own with `notebook <verb> --help`:
 | `-m`, `--memory MiB` | all | stop a cell whose worker holds more heap (default: no limit) |
 | `-w`, `--work DIR` | all | the work directory (default: under the user cache directory) |
 | `--runtime-src DIR` | all | run against a go-notebook source tree instead of a released runtime |
+| `-s`, `--save FILE` | irb | write the session, at its end, as a notebook that `notebook run` runs |
+| `--svg-dir DIR` | irb | save each figure an input shows as an SVG file there |
+| `--history FILE`, `--history-size N` | irb | the history file and how many inputs it keeps (default 1000; 0: none) |
+
+For `irb`, `--timeout` and `--memory` apply to each input.
 
 Releases up to v0.3 read flags with one dash (`-timeout 30s`); that spelling is still accepted, with a note on stderr.
 
@@ -113,7 +119,39 @@ A ` ```ruby ` block runs in [rbgo](https://github.com/go-embedded-ruby/ruby), a 
 
 Dependencies, caching and re-runs work across languages as for Go alone: a Ruby cell re-runs only when it or a cell it reads changes. The last expression shows its `inspect`, and a `Plot` figure shows as SVG. [examples/mixed.md](examples/mixed.md) draws data in Go and fits and plots it in Ruby; the exact rules are in [docs/design.md](docs/design.md#ruby-cells).
 
-Ruby cells also run in the browser, with no server, in the [playground](https://github.com/go-notebook/playground): the same rbgo and bindings compiled to WebAssembly, loaded only when the open notebook has a Ruby cell. Try the Ruby examples on [go-statistics](https://go-statistics.github.io/playground/#5-ruby) and [go-numerics](https://go-numerics.github.io/playground/#6-ruby).
+Ruby cells also run in the browser, with no server, in the [playground](https://github.com/go-notebook/playground): the same rbgo and bindings compiled to WebAssembly, loaded only when the open notebook has a Ruby cell. Try it on [go-notebook's own playground](https://go-notebook.github.io/playground/) (Go and Ruby notebooks), and the Ruby examples on [go-statistics](https://go-statistics.github.io/playground/#5-ruby) and [go-numerics](https://go-numerics.github.io/playground/#6-ruby).
+
+## An interactive session: `notebook irb`
+
+`notebook irb` is irb on the same Ruby: rbgo with the go-scikit bindings, line by line, with no notebook file.
+
+```console
+$ notebook irb --save session.md
+irb(main):001> x = [2.1, 3.4, 1.9, 5.6]
+=> [2.1, 3.4, 1.9, 5.6]
+irb(main):002> fit = Stats::Normal.fit(x)
+=> #<Stats::Normal loc=3.25, scale=1.4739402972983673>
+irb(main):003> _.loc * 2
+=> 6.5
+irb(main):004> def sq(v)
+irb(main):005*   v * v
+irb(main):006* end
+=> :sq
+irb(main):007> raise "boom"
+boom (RuntimeError)
+	from (irb):7:in '<main>'
+irb(main):008> exit
+notebook irb: wrote session.md
+```
+
+- **Editing**: on a terminal, the line editor is [go-ruby-reline](https://github.com/go-ruby-reline/reline)'s port of Ruby's Reline (emacs and vi keys, history with Up/Down and Ctrl-R, bracketed paste). An input that is not finished — an open `def`, bracket or string — continues on the next line with irb's continuation prompt; rbgo's parser decides. Tab completes locals, constants (`Stats::Nor` → `Stats::Normal`) and the methods of a variable's value, without calling anything the word contains.
+- **Results**: `=> inspect` after each input, `_` the last value, and an exception as `message (Class)` with its frames, the session going on. Any local may be assigned again: there is no dependency graph here. `exit`, `quit` or Ctrl-D ends the session; Ctrl-C abandons the line being typed, or stops the input that is running.
+- **Limits**: each input runs in a worker process, so `--timeout` and `--memory` apply to each input as to a cell. Stopping an input (a limit, Ctrl-C) kills its worker: the next input gets a new one, and the session says that its locals, methods and classes are gone.
+- **Figures**: a `Plot` figure is never printed as SVG; `--svg-dir figures` saves each one as `figures/figure-N.svg`.
+- **`--save session.md`** writes the inputs that ran as ` ```ruby ` cells, grouped so that the notebook keeps the rules of cells (an input that assigns a name again joins the cell that defined it; one that reads `_` joins the one before), and `notebook run session.md` runs them again.
+- **History**: `irb_history` under the user config directory's `go-notebook` (mode 0600; the inputs only, never their values; the last 1000), in irb's format.
+
+When standard input is not a terminal, lines are read as they come and echoed after their prompt, so `notebook irb < script.rb` prints a transcript.
 
 A notebook runs with your rights, in either language. Every cell runs in a worker process of its own: `--timeout 30s` kills a worker whose cell runs longer, and `--memory 512` stops one whose cells hold more than 512 MiB of Go heap; the cell fails, and the next run starts a new worker. Both are off by default ([what a cell can do, and what stops it](docs/design.md#what-a-cell-can-do-and-what-stops-it)).
 

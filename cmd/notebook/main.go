@@ -5,6 +5,7 @@
 //	notebook html analysis.md           run it, write analysis.html
 //	notebook watch analysis.md          run it again on every save, keeping analysis.html current
 //	notebook serve analysis.md          the same, shown live at http://127.0.0.1:8888
+//	notebook irb                        an interactive Ruby session, as irb, on the same Ruby
 //
 // Results are kept between invocations in a work directory under the user's
 // cache directory, so a second run only runs the cells that changed.
@@ -64,7 +65,7 @@ type options struct {
 	watching             bool // the verb reads --interval
 }
 
-// RootCmd returns the notebook command with its four verbs.
+// RootCmd returns the notebook command with its five verbs.
 func RootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "notebook",
@@ -75,13 +76,14 @@ Results are kept between invocations in a work directory under the user's
 cache directory, so a second run only runs the cells that changed.`,
 		Example: `  notebook run analysis.md
   notebook html -o report.html analysis.md
-  notebook serve --addr 127.0.0.1:9000 --timeout 30s --memory 2048 analysis.md`,
+  notebook serve --addr 127.0.0.1:9000 --timeout 30s --memory 2048 analysis.md
+  notebook irb --save session.md`,
 		Version:       version(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
-			return errors.New("missing command: run, html, watch or serve (see notebook --help)")
+			return errors.New("missing command: run, html, watch, serve or irb (see notebook --help)")
 		},
 	}
 	root.AddCommand(
@@ -115,6 +117,7 @@ cache directory, so a second run only runs the cells that changed.`,
 			func(cmd *cobra.Command, k *kernel.Kernel, path string, o *options) error {
 				return serve(k, path, o.addr, o.interval, cmd.OutOrStdout(), stopWatch)
 			}),
+		irbVerb(),
 	)
 	return root
 }
@@ -167,19 +170,27 @@ func verb(name, short, extra string,
 
 // kernel checks the limits and opens the notebook's kernel.
 func (o *options) kernel(path string) (*kernel.Kernel, error) {
+	if err := o.check(); err != nil {
+		return nil, err
+	}
+	return newKernel(path, o.work, o.src, o.timeout, o.memory<<20)
+}
+
+// check checks the limits.
+func (o *options) check() error {
 	// In MiB: a value whose byte count overflows an int64 would wrap, to no
 	// limit or to a tiny one.
 	if o.memory < 0 || o.memory > math.MaxInt64>>20 {
-		return nil, fmt.Errorf("--memory %d: out of range (0 to %d MiB)", o.memory, int64(math.MaxInt64>>20))
+		return fmt.Errorf("--memory %d: out of range (0 to %d MiB)", o.memory, int64(math.MaxInt64>>20))
 	}
 	if o.timeout < 0 {
-		return nil, fmt.Errorf("--timeout %s: negative", o.timeout)
+		return fmt.Errorf("--timeout %s: negative", o.timeout)
 	}
 	// A ticker panics on a period that is not positive.
 	if o.watching && o.interval <= 0 {
-		return nil, fmt.Errorf("--interval %s: not positive", o.interval)
+		return fmt.Errorf("--interval %s: not positive", o.interval)
 	}
-	return newKernel(path, o.work, o.src, o.timeout, o.memory<<20)
+	return nil
 }
 
 // version is this build's module version, for --version.
@@ -257,7 +268,14 @@ func newKernel(path, work, src string, timeout time.Duration, memory int64) (*ke
 		sum := sha256.Sum256([]byte(abs))
 		work = filepath.Join(cache, "go-notebook", hex.EncodeToString(sum[:8]))
 	}
-	opt := kernel.Options{Dir: work, Name: filepath.Base(path), CellTimeout: timeout, CellMemory: memory}
+	return kernel.New(kernelOptions(work, filepath.Base(path), src, timeout, memory))
+}
+
+// kernelOptions are the options of a kernel or a session in the work
+// directory work: the runtime this build of the command comes from (or the
+// source tree src), NOTEBOOK_REPLACE's modules, and the limits.
+func kernelOptions(work, name, src string, timeout time.Duration, memory int64) kernel.Options {
+	opt := kernel.Options{Dir: work, Name: name, CellTimeout: timeout, CellMemory: memory}
 	version, dir := runtimeSource()
 	if src != "" {
 		dir = src
@@ -269,7 +287,7 @@ func newKernel(path, work, src string, timeout time.Duration, memory int64) (*ke
 		opt.RuntimeVersion = version
 	}
 	addReplaces(opt.Replace, os.Getenv("NOTEBOOK_REPLACE"))
-	return kernel.New(opt)
+	return opt
 }
 
 // addReplaces reads NOTEBOOK_REPLACE, which points modules of the work

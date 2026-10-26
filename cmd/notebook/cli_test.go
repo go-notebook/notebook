@@ -117,6 +117,7 @@ func TestFlagsPerVerb(t *testing.T) {
 		"html":  {"memory/m", "output/o", "runtime-src/", "timeout/t", "work/w"},
 		"watch": {"interval/", "memory/m", "output/o", "runtime-src/", "timeout/t", "work/w"},
 		"serve": {"addr/", "interval/", "memory/m", "runtime-src/", "timeout/t", "work/w"},
+		"irb":   {"history/", "history-size/", "memory/m", "runtime-src/", "save/s", "svg-dir/", "timeout/t", "work/w"},
 	}
 	root := RootCmd()
 	if len(root.Commands()) != len(want) {

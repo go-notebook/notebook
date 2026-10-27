@@ -121,6 +121,16 @@ Dependencies, caching and re-runs work across languages as for Go alone: a Ruby 
 
 Ruby cells also run in the browser, with no server, in the [playground](https://github.com/go-notebook/playground): the same rbgo and bindings compiled to WebAssembly, loaded only when the open notebook has a Ruby cell. Try it on [go-notebook's own playground](https://go-notebook.github.io/playground/) (Go and Ruby notebooks), and the Ruby examples on [go-statistics](https://go-statistics.github.io/playground/#5-ruby) and [go-numerics](https://go-numerics.github.io/playground/#6-ruby).
 
+## Julia cells: parsed and checked, not run yet
+
+A ` ```julia ` block is a Julia cell (v0.6.0 and later). It is parsed with [go-embedded-julia](https://github.com/go-embedded-julia/julia)'s parser, a pure-Go port of JuliaSyntax that gives the same trees as julia 1.12 on its whole test corpus, and its names join the notebook's dependency graph under the same rules as the other cells:
+
+- **Syntax errors** are reported at the notebook's line and column, with julia's own message (``5:8: cell 0: syntax error: Expected `)` or `,` ``).
+- **Names** follow Julia's scope rules for an interactive context ("Scope of Variables" in the Julia manual): top-level assignments, `function`, `const`, `struct`, `abstract type`, `module`, `macro`, `using`/`import` define; `let`, functions and comprehensions are hard scopes; `for`/`while`/`try` at the top level are soft scopes that assign an existing global, as in the REPL and IJulia. 61 cells are checked against julia 1.12.6 itself, which lowers them.
+- **Running** a Julia cell fails, clearly: *Julia cells are parsed and checked, but not run yet: execution arrives with go-embedded-julia's runtime (milestone M3)*. The cells that read what it defines, in any language, are **blocked** and say so; the others run; `notebook run` exits non-zero.
+
+No external `julia` is started: execution waits for go-embedded-julia's own lowering and runtime.
+
 ## An interactive session: `notebook irb`
 
 `notebook irb` is irb on the same Ruby: rbgo with the go-scikit bindings, line by line, with no notebook file.

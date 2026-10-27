@@ -43,9 +43,12 @@ func AnalyzeSources(sources []Source) *Graph {
 	g := &Graph{Owner: map[string]int{}}
 	for i, s := range sources {
 		var c *Cell
-		if s.Lang == Ruby {
+		switch s.Lang {
+		case Ruby:
 			c = AnalyzeRubyCell(i, s.Source)
-		} else {
+		case Julia:
+			c = AnalyzeJuliaCell(i, s.Source)
+		default:
 			c = AnalyzeCell(i, s.Source)
 		}
 		g.Cells = append(g.Cells, c)
@@ -189,13 +192,18 @@ func (g *Graph) Upstream(cells ...int) []int {
 //   - a Go cell sees a Ruby cell's top-level local variables, but not its
 //     methods, constants or classes, nor a local named like a Go keyword or a
 //     predeclared identifier (len, int, type, …), which stays Ruby's;
-//   - a Ruby cell sees a Go cell's variables, but not its funcs or types.
+//   - a Ruby cell sees a Go cell's variables, but not its funcs or types;
+//   - a Julia cell's variables, not its functions, macros, constants or types,
+//     are seen by the other languages as a Ruby cell's are, and a Julia cell
+//     sees their variables. Julia cells do not run yet, so a cell that reads
+//     one of their variables is blocked (see gen), but the edge is there.
 func Shared(owner, user *Cell, name string) bool {
 	if owner.Lang == user.Lang {
 		return true
 	}
-	if owner.Lang == Ruby {
-		return !contains(owner.Funcs, name) && !contains(owner.Consts, name) && GoName(name)
+	if owner.Lang == Ruby || owner.Lang == Julia {
+		ok := !contains(owner.Funcs, name) && !contains(owner.Consts, name)
+		return ok && (user.Lang != Go && user.Lang != "" || GoName(name))
 	}
 	return !contains(owner.Funcs, name) && !contains(owner.Types, name)
 }

@@ -1,8 +1,8 @@
 // Package format reads and writes notebooks.
 //
 // A notebook is a Markdown document. Its fenced code blocks whose info
-// string's first word is "go" or "ruby" are code cells, in Go or in Ruby;
-// everything between them is
+// string's first word is "go", "ruby" or "julia" are code cells, in Go, Ruby
+// or Julia; everything between them is
 // prose, kept byte for byte. GitHub and any Markdown viewer show a notebook as
 // a document, diffs are diffs of text, and no output is ever stored in the
 // file: results live in the kernel's value store and in exports.
@@ -48,7 +48,7 @@ type Cell struct {
 	Info string
 
 	// Lang is a code cell's language, the first word of its info string:
-	// "go" or "ruby".
+	// "go", "ruby" or "julia".
 	Lang string
 
 	// open and close are a code cell's fence lines, newline included, kept
@@ -91,7 +91,7 @@ func Parse(src string) *Notebook {
 			}
 		}
 		word, rest, _ := strings.Cut(strings.TrimSpace(info), " ")
-		if word != "go" && word != "ruby" {
+		if word != "go" && word != "ruby" && word != "julia" {
 			for k := i; k <= end && k < len(lines); k++ {
 				prose.WriteString(lines[k])
 			}
@@ -146,7 +146,7 @@ func (nb *Notebook) String() string {
 // code.
 func NewCode(src string) Cell { return NewCodeIn("go", src) }
 
-// NewCodeIn returns a code cell in the language lang ("go" or "ruby")
+// NewCodeIn returns a code cell in the language lang ("go", "ruby", "julia")
 // holding src.
 func NewCodeIn(lang, src string) Cell {
 	if src != "" && !strings.HasSuffix(src, "\n") {

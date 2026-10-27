@@ -155,6 +155,14 @@ func (g *generator) waits(i int) bool {
 func (g *generator) waitsOnDeferred(i int) string {
 	for _, d := range g.prog.Graph.Deps[i] {
 		if _, ok := g.prog.Deferred[d]; ok {
+			switch {
+			case g.isJulia(d):
+				g.juliaBlocked[i] = true
+				return fmt.Sprintf("not run: it reads cell %d, a Julia cell, and Julia cells are not run yet", d)
+			case g.juliaBlocked[d]:
+				g.juliaBlocked[i] = true
+				return fmt.Sprintf("not run: it reads cell %d, which is blocked by a Julia cell", d)
+			}
 			return fmt.Sprintf("not run yet: it reads cell %d, which waits for a Ruby cell", d)
 		}
 	}

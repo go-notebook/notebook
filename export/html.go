@@ -97,8 +97,14 @@ func writeBundle(b *bytes.Buffer, d map[string][]byte) {
 // highlight colours a cell's source with go-rouge's lexer for its language,
 // Go or Ruby (Rouge's short classes: k keyword, s string, ss symbol, m
 // number, c comment, n name ...), escaped as HTML.
+//
+// go-rouge has no Julia lexer yet: a Julia cell is shown escaped, uncoloured.
 func highlight(lang, src string) string {
-	if lang != "ruby" {
+	switch lang {
+	case "julia":
+		return html.EscapeString(src)
+	case "ruby":
+	default:
 		lang = "go"
 	}
 	h, _ := rouge.Highlight(src, lang, "html") // fails only for an unknown lexer or formatter

@@ -1,0 +1,60 @@
+x	
+y	+,x
+x,y	+
+x,y	
+a,b	
+a,b	t
+x	Int
+g	h
+d,e	c
+p	q
+f	+,y
+f	*,Number,k
+g	+,w
+h	
+	+,z
+sq	+,^,c
+C	
+D,E	
+P	S,Vector
+Q	AbstractR,Int
+A	B
+Bits	
+M	
+@twice	
+LinearAlgebra	
+dot,norm	
+show	
+St	
+	:,n
+s	+,:,n
+	:,k,println
+t	+,<
+	>
+	cleanup,handle,risky,z
+	+,c,d
+	+,x
+	:,>,^,k,n
+	=>,Dict,pairs
+	*,sum,w,xs
+	+,map,off,xs
+	Base,IO,P,print
+	+,P,q
+total	*,sum,v,weights
+nt	c
+	f,val
+	f,key
+m	+,a
+s	v
+ex	b
+x	
+outer	+,base
+acc	+,:
+h	z
+x,y	Int
+h	:
+a,b	nt
+	+
+	:,<,m,n
+f	Int
+f	R

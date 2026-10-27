@@ -1,5 +1,3 @@
-//go:build !nojulia
-
 package gen
 
 import (

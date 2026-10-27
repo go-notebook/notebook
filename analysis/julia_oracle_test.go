@@ -1,3 +1,5 @@
+//go:build !nojulia
+
 package analysis
 
 import (

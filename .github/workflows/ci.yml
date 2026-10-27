@@ -36,6 +36,9 @@ jobs:
           [ -z "$unformatted" ] || { echo "::error::not gofmt-formatted:"; echo "$unformatted"; exit 1; }
       - run: go vet ./...
       - run: go build ./...
+      # The build without go-embedded-julia's parser (the playground's
+      # Go-only core) compiles, and fails Julia cells with its own message.
+      - run: go vet -tags nojulia ./... && go test -tags nojulia -run NoJulia ./analysis
       - name: Test + 100% coverage gate
         shell: bash
         run: |

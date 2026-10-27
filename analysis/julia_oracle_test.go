@@ -121,7 +121,9 @@ func TestJuliaNamesGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+	// A Windows checkout may turn the file's newlines into CRLF.
+	text := strings.ReplaceAll(string(b), "\r\n", "\n")
+	want := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 	if len(want) != len(juliaCorpus) {
 		t.Fatalf("golden has %d lines, corpus %d", len(want), len(juliaCorpus))
 	}

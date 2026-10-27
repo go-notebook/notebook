@@ -73,3 +73,15 @@ func TestRubyHighlight(t *testing.T) {
 		t.Fatalf("not highlighted as Ruby:\n%s", b.String())
 	}
 }
+
+// A Julia cell is shown escaped: go-rouge has no Julia lexer.
+func TestJuliaCellShown(t *testing.T) {
+	nb := format.Parse("```julia\nx = a < b\n```\n")
+	var b strings.Builder
+	if err := HTML(&b, "t", nb, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), "x = a &lt; b") {
+		t.Fatalf("not escaped:\n%s", b.String())
+	}
+}

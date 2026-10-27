@@ -276,7 +276,18 @@ func (k *Kernel) execute(prog *gen.Program, rep *Report, force map[int]bool) {
 		key := k.keys[i]
 		if f, ok := blocked(g.Deps[i], failed); ok {
 			failed[i] = f
-			rep.Results[i] = Result{Cell: i, Error: fmt.Sprintf("not run: cell %d failed", f)}
+			why := fmt.Sprintf("not run: cell %d failed", f)
+			if g.Cells[f].Lang == analysis.Julia {
+				why = analysis.JuliaBlocked(f)
+			}
+			rep.Results[i] = Result{Cell: i, Error: why}
+			continue
+		}
+		if g.Cells[i].Lang == analysis.Julia {
+			// Parsed and checked, never run (gen.JuliaNotRun): the cells that
+			// read it are blocked.
+			failed[i] = i
+			rep.Results[i] = Result{Cell: i, Error: gen.JuliaNotRun}
 			continue
 		}
 		if !need[i] {
@@ -467,7 +478,7 @@ func allStandard(paths []string) bool {
 func importPaths(cells []gen.Code) []string {
 	var srcs []string
 	for _, c := range cells {
-		if c.Lang != analysis.Ruby {
+		if c.Lang == analysis.Go || c.Lang == "" {
 			srcs = append(srcs, c.Source)
 		}
 	}

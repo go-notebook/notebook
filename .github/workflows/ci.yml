@@ -61,6 +61,8 @@ jobs:
         run: go test -run '^$' -fuzz FuzzRoundTrip -fuzztime 60s ./format
       - name: Fuzz the analysis of Ruby cells for 60 s
         run: go test -run '^$' -fuzz FuzzAnalyzeRubyCell -fuzztime 60s ./analysis
+      - name: Fuzz the analysis of Julia cells for 60 s
+        run: go test -run '^$' -fuzz FuzzAnalyzeJuliaCell -fuzztime 60s ./analysis
 
   arch-native:
     name: arch arm64

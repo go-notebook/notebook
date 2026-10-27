@@ -144,3 +144,12 @@ func TestRubyCells(t *testing.T) {
 		t.Fatalf("new cells: %q", got)
 	}
 }
+
+// A julia fence is a Julia code cell.
+func TestJuliaCells(t *testing.T) {
+	src := "```julia\nx = 1\n```\n"
+	nb := Parse(src)
+	if len(nb.Cells) != 1 || nb.Cells[0].Kind != Code || nb.Cells[0].Lang != "julia" || nb.String() != src {
+		t.Fatalf("cells: %+v", nb.Cells)
+	}
+}

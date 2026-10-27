@@ -32,7 +32,7 @@ const RuntimePath = "github.com/go-notebook/notebook/runtime"
 type Code struct {
 	Source string
 	Line   int
-	// Lang is the cell's language: "go" (or "") or "ruby".
+	// Lang is the cell's language: "go" (or ""), "ruby" or "julia".
 	Lang string
 }
 
@@ -99,7 +99,7 @@ func GenerateWith(path string, cells []Code, imp types.Importer, opt Options) *P
 	for i, c := range cells {
 		srcs[i] = analysis.Source{Lang: c.Lang, Source: c.Source}
 	}
-	g := &generator{path: path, cells: cells, imp: imp, opt: opt, unknown: map[string]bool{},
+	g := &generator{path: path, cells: cells, imp: imp, opt: opt, unknown: map[string]bool{}, juliaBlocked: map[int]bool{},
 		prog: &Program{Graph: analysis.AnalyzeSources(srcs), Deferred: map[int]string{}}}
 	g.prog.Imports = map[string]string{}
 	for _, e := range g.prog.Graph.Errors {
@@ -115,6 +115,8 @@ func GenerateWith(path string, cells []Code, imp types.Importer, opt Options) *P
 	}
 	for _, i := range g.prog.Graph.Order {
 		switch {
+		case g.isJulia(i):
+			g.deferJulia(i)
 		case g.isRuby(i):
 			g.inferRuby(i)
 		case g.waits(i):
@@ -139,6 +141,9 @@ type generator struct {
 	prog  *Program
 	// unknown are the Ruby variables whose Go type is not known yet.
 	unknown map[string]bool
+	// juliaBlocked are the deferred cells that read a Julia cell, directly
+	// or through another deferred cell.
+	juliaBlocked map[int]bool
 
 	parsed []*cellAST
 	// names maps an import path to its name in the program; byName is the
@@ -174,7 +179,7 @@ func (g *generator) parseCells() {
 	for i, code := range g.cells {
 		ac := g.prog.Graph.Cells[i]
 		c := &cellAST{decls: ac.Chunks, refs: map[string]bool{}, locals: map[string]string{}, display: ac.Display}
-		if g.isRuby(i) {
+		if g.isRuby(i) || g.isJulia(i) {
 			g.parsed = append(g.parsed, c)
 			continue
 		}

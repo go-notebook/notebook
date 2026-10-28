@@ -4,7 +4,7 @@ go 1.27.2
 
 require (
 	github.com/go-embedded-julia/julia v0.2.0
-	github.com/go-rouge/rouge v0.7.0
+	github.com/go-rouge/rouge v0.7.1
 	github.com/go-ruby-irb/irb v0.1.0
 	github.com/go-ruby-parser/parser v0.13.1
 	github.com/go-ruby-reline/reline v0.1.0

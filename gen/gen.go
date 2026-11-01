@@ -118,7 +118,7 @@ func GenerateWith(path string, cells []Code, imp types.Importer, opt Options) *P
 		case g.checkOnly(i):
 			g.prog.Deferred[i] = analysis.RunOf(g.cells[i].Lang).NotRun
 		case b != nil:
-			b.infer(g, i)
+			b.Infer(&Context{g}, i)
 		case g.waits(i):
 			g.deferCell(i)
 		default:
@@ -480,7 +480,7 @@ func (g *generator) emit(lines bool) []byte {
 		case g.prog.Deferred[k] != "":
 			g.writeDeferred(&b, k)
 		case bk != nil:
-			bk.write(g, &b, k)
+			bk.Write(&Context{g}, &b, k)
 		default:
 			g.writeCell(&b, k, lines)
 		}

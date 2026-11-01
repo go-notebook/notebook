@@ -18,13 +18,13 @@ const RubyModule = analysis.RubyModule
 // rubyBackend generates the Ruby cells: calls of the Ruby session.
 type rubyBackend struct{}
 
-func (rubyBackend) infer(g *generator, i int) { g.inferRuby(i) }
+func (rubyBackend) Infer(c *Context, i int) { c.g.inferRuby(i) }
 
-func (rubyBackend) write(g *generator, b *strings.Builder, k int) { g.writeRubyCell(b, k) }
+func (rubyBackend) Write(c *Context, b *strings.Builder, k int) { c.g.writeRubyCell(b, k) }
 
-func (rubyBackend) runtime() (name, prelude string) { return "_rb", "var _rbs = _rb.New()\n\n" }
+func (rubyBackend) Runtime() (name, prelude string) { return "_rb", "var _rbs = _rb.New()\n\n" }
 
-func init() { backends[analysis.Ruby] = rubyBackend{} }
+func init() { RegisterBackend(analysis.Ruby, rubyBackend{}) }
 
 // Options configure GenerateWith.
 type Options struct {

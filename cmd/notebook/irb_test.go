@@ -219,6 +219,38 @@ func TestIrbNotice(t *testing.T) {
 	}
 }
 
+// Tab completes a top-level constant typed as a prefix, through the real
+// completer: go-scikit/ruby v0.2.1 answers it from Object.constants.
+func TestIrbCompletesConstant(t *testing.T) {
+	work := irbWork(t)
+	sessions := make(chan *kernel.Session, 1)
+	seam(t, &newSession, func(opt kernel.Options, progress, stderr io.Writer) (*kernel.Session, error) {
+		s, err := kernel.NewSession(opt, progress, stderr)
+		sessions <- s
+		return s, err
+	})
+	root := RootCmd()
+	var out syncBuffer
+	in, w := io.Pipe()
+	root.SetIn(in)
+	root.SetOut(&out)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"irb", "--work", work, "--history-size", "0"})
+	done := make(chan error, 1)
+	go func() { done <- root.Execute() }()
+	_, _ = io.WriteString(w, "1\n")
+	s := <-sessions
+	waitFor(t, &out, "=> 1")
+	got := (&ttyReader{s: s}).complete("Compa", "", "")
+	_ = w.Close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(got, "Comparable") {
+		t.Errorf("candidates for Compa: %q", got)
+	}
+}
+
 func TestIrbFlagErrors(t *testing.T) {
 	for _, args := range [][]string{
 		{"--history-size", "-1"},

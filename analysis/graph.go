@@ -42,15 +42,7 @@ func Analyze(sources []string) *Graph {
 func AnalyzeSources(sources []Source) *Graph {
 	g := &Graph{Owner: map[string]int{}}
 	for i, s := range sources {
-		var c *Cell
-		switch s.Lang {
-		case Ruby:
-			c = AnalyzeRubyCell(i, s.Source)
-		case Julia:
-			c = AnalyzeJuliaCell(i, s.Source)
-		default:
-			c = AnalyzeCell(i, s.Source)
-		}
+		c := analyzeIn(s.Lang, i, s.Source)
 		g.Cells = append(g.Cells, c)
 		g.Errors = append(g.Errors, c.Errors...)
 	}
@@ -84,11 +76,45 @@ func AnalyzeSources(sources []Source) *Graph {
 			}
 		}
 	}
+	g.dynamicEdges()
 	for _, d := range g.Dependents {
 		sort.Ints(d)
 	}
 	g.order()
 	return g
+}
+
+// dynamicEdges adds the edges of Dynamic cells, whose names cannot be
+// resolved statically (see Names): a Dynamic cell depends on every earlier
+// cell, and every later cell that reads any name depends on it, so it re-runs
+// after anything before it changes and invalidates whatever may read what it
+// defined.
+func (g *Graph) dynamicEdges() {
+	for _, d := range g.Cells {
+		if !d.Dynamic {
+			continue
+		}
+		for j := 0; j < d.Index; j++ {
+			g.addEdge(d.Index, j)
+		}
+		for k := d.Index + 1; k < len(g.Cells); k++ {
+			if len(g.Cells[k].Uses) > 0 {
+				g.addEdge(k, d.Index)
+			}
+		}
+	}
+}
+
+// addEdge makes cell user depend on cell owner, once.
+func (g *Graph) addEdge(user, owner int) {
+	for _, o := range g.Deps[user] {
+		if o == owner {
+			return
+		}
+	}
+	g.Deps[user] = append(g.Deps[user], owner)
+	sort.Ints(g.Deps[user])
+	g.Dependents[owner] = append(g.Dependents[owner], user)
 }
 
 // order computes a topological order, smallest ready cell first, and reports
@@ -189,6 +215,8 @@ func (g *Graph) Upstream(cells ...int) []int {
 // Shared reports whether the cell user sees the name that cell owner defines.
 // Within a language every name is shared. Across languages only variables are:
 //
+// The rule is the owner's language's (Language.Crosses):
+//
 //   - a Go cell sees a Ruby cell's top-level local variables, but not its
 //     methods, constants or classes, nor a local named like a Go keyword or a
 //     predeclared identifier (len, int, type, …), which stays Ruby's;
@@ -201,11 +229,8 @@ func Shared(owner, user *Cell, name string) bool {
 	if owner.Lang == user.Lang {
 		return true
 	}
-	if owner.Lang == Ruby || owner.Lang == Julia {
-		ok := !contains(owner.Funcs, name) && !contains(owner.Consts, name)
-		return ok && (user.Lang != Go && user.Lang != "" || GoName(name))
-	}
-	return !contains(owner.Funcs, name) && !contains(owner.Types, name)
+	l := Lookup(owner.Lang)
+	return l != nil && l.Crosses(owner, user, name)
 }
 
 func contains(list []string, s string) bool {

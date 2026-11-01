@@ -66,6 +66,11 @@ type Options struct {
 	// DefaultRubyVersion.
 	RubyVersion string
 
+	// Versions maps a language to the version of its runtime module the work
+	// module requires (analysis.Runtime), overriding the language's default.
+	// RubyVersion, when set, wins for Ruby.
+	Versions map[string]string
+
 	// CellTimeout bounds how long one cell may run: a cell still running
 	// after it — an endless loop, in Go or in Ruby — has its worker killed
 	// and fails, and the next Run starts a new worker. Zero means no bound.
@@ -118,7 +123,7 @@ type Kernel struct {
 	// their variables had when they last ran (gen.Options.RubyTypes), kept in
 	// the work directory, and typesChanged that a cell of this Run changed
 	// one.
-	ruby         bool
+	langs        []string // the languages of the cells that link a Go package (analysis.Runtime), sorted
 	rubyTypes    map[string]string
 	typesChanged bool
 	waiting      bool            // a cell of this Run was deferred, or reads a type that changed
@@ -183,10 +188,7 @@ func (k *Kernel) Run(cells []gen.Code) (*Report, error) {
 func (k *Kernel) run(cells []gen.Code) (*Report, error) {
 	start := time.Now()
 	k.typesChanged, k.waiting, k.changed = false, false, map[string]bool{}
-	k.ruby = false
-	for _, c := range cells {
-		k.ruby = k.ruby || c.Lang == analysis.Ruby
-	}
+	k.langs = runtimeLangs(cells)
 	rep := &Report{}
 	paths := importPaths(cells)
 	if err := k.prepareModule(paths); err != nil {
@@ -277,17 +279,17 @@ func (k *Kernel) execute(prog *gen.Program, rep *Report, force map[int]bool) {
 		if f, ok := blocked(g.Deps[i], failed); ok {
 			failed[i] = f
 			why := fmt.Sprintf("not run: cell %d failed", f)
-			if g.Cells[f].Lang == analysis.Julia {
-				why = analysis.JuliaBlocked(f)
+			if r := analysis.RunOf(g.Cells[f].Lang); !r.Runs {
+				why = r.Blocked(f)
 			}
 			rep.Results[i] = Result{Cell: i, Error: why}
 			continue
 		}
-		if g.Cells[i].Lang == analysis.Julia {
-			// Parsed and checked, never run (gen.JuliaNotRun): the cells that
+		if r := analysis.RunOf(g.Cells[i].Lang); !r.Runs {
+			// Parsed and checked, never run (Run.NotRun): the cells that
 			// read it are blocked.
 			failed[i] = i
-			rep.Results[i] = Result{Cell: i, Error: gen.JuliaNotRun}
+			rep.Results[i] = Result{Cell: i, Error: r.NotRun}
 			continue
 		}
 		if !need[i] {
@@ -445,10 +447,10 @@ func cellKeys(cells []gen.Code, prog *gen.Program, env keyEnv) []string {
 		h := sha256.New()
 		// The cell's position is not part of it: moving a cell runs nothing.
 		fmt.Fprintf(h, "%s\x00%s\x00%s\x00", cells[i].Source, strings.Join(pkgs, ","), env.toolchain)
-		if c.Lang == analysis.Ruby {
-			// A Ruby cell runs on rbgo and the go-scikit bindings, whose
-			// versions are in go.sum.
-			fmt.Fprintf(h, "ruby\x00%s\x00", env.sums)
+		if _, ok := analysis.Lookup(c.Lang).(analysis.Runtime); ok {
+			// A cell of a language that links a Go package (Ruby's rbgo and
+			// the go-scikit bindings) depends on its versions, in go.sum.
+			fmt.Fprintf(h, "%s\x00%s\x00", c.Lang, env.sums)
 		} else if !allStandard(pkgs) {
 			// Any module could be behind any non-standard package,
 			// transitively: the whole go.sum is the honest summary.
@@ -585,15 +587,16 @@ func (k *Kernel) learn(notes map[string]string) {
 // typesPath is where the Ruby variables' Go types are kept.
 func (k *Kernel) typesPath() string { return filepath.Join(k.opt.Dir, "ruby-types.json") }
 
-// readsChanged reports whether a Go cell reads one of the Ruby variables
-// whose type changed: it was compiled against the old type.
+// readsChanged reports whether a Go cell reads one of the variables whose
+// type changed (those of a language that learns its types, Ruby): it was
+// compiled against the old type.
 func readsChanged(prog *gen.Program, changed map[string]bool) bool {
 	for _, c := range prog.Graph.Cells {
-		if c.Lang == analysis.Ruby {
+		if analysis.LearnsTypes(c.Lang) {
 			continue
 		}
 		for _, u := range c.Uses {
-			if o, ok := prog.Graph.Owner[u]; ok && changed[u] && prog.Graph.Cells[o].Lang == analysis.Ruby {
+			if o, ok := prog.Graph.Owner[u]; ok && changed[u] && analysis.LearnsTypes(prog.Graph.Cells[o].Lang) {
 				return true
 			}
 		}

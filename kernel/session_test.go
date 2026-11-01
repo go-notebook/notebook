@@ -260,7 +260,7 @@ func TestSessionBuildCached(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	k.ruby = true
+	k.langs = []string{"ruby"}
 	s := &Session{k: k}
 	if err := os.WriteFile(filepath.Join(dir, "worker.stamp"), []byte(sessionStamp(k.goMod())), 0o644); err != nil {
 		t.Fatal(err)
@@ -296,7 +296,7 @@ func TestSessionBuildFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	k.ruby = true
+	k.langs = []string{"ruby"}
 	s := &Session{k: k}
 	fail := errors.New("injected")
 	seam(t, &goBuild, func(string, string) ([]byte, error) { return []byte("compiler says no"), fail })

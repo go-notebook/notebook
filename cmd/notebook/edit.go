@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/go-notebook/notebook/analysis"
 	"github.com/go-notebook/notebook/format"
 )
 
@@ -180,8 +181,10 @@ func insertAfter(nb *format.Notebook, i int, kind string) error {
 	switch kind {
 	case "prose":
 		c = format.Cell{Kind: format.Prose, Source: "\n"}
-	case "ruby":
-		c = format.NewCodeIn("ruby", "")
+	default:
+		if kind != "" && analysis.Lookup(kind) != nil {
+			c = format.NewCodeIn(kind, "")
+		}
 	}
 	nb.Cells = append(nb.Cells[:i+1], append([]format.Cell{c}, nb.Cells[i+1:]...)...)
 	return nil

@@ -165,6 +165,28 @@ When standard input is not a terminal, lines are read as they come and echoed af
 
 A notebook runs with your rights, in either language. Every cell runs in a worker process of its own: `--timeout 30s` kills a worker whose cell runs longer, and `--memory 512` stops one whose cells hold more than 512 MiB of Go heap; the cell fails, and the next run starts a new worker. Both are off by default ([what a cell can do, and what stops it](docs/design.md#what-a-cell-can-do-and-what-stops-it)).
 
+## Adding a cell language
+
+A cell language is one `analysis.Language` registered under the first word of its fence's info string; the graph, the kernel, the generator and the exporter look it up (`analysis.Lookup`) and never test for a language by name. A fence whose word is not registered stays prose.
+
+```go
+type Language interface {
+	Name() string // the fence word: "go", "ruby", "julia", ...
+	Analyze(src string, lim Limits) (Names, []Diagnostic, error)
+	Crosses(owner, user *Cell, name string) bool // does a cell of another language see name?
+	Run() Run // runs, or check-only with the user-facing reasons
+}
+type Names struct{ Defines, Uses []string; Dynamic bool }
+```
+
+1. **Implement `Language`** and call `analysis.Register` from `init`. `Analyze` must refuse a source over `lim.MaxBytes` (and nesting over `lim.MaxDepth`) with an error, never a panic; diagnostics carry a byte offset in the cell. `Crosses` is the owner's rule for what the other languages read: a Go cell sees a Ruby local, not a Ruby method.
+2. **Dynamic cells.** Set `Names.Dynamic` for a cell whose names cannot be resolved statically (R's `<<-`, `assign`/`get` with computed names, `eval(parse())`, `attach`, `library()`). The graph makes it depend on every earlier cell, and every later cell that reads any name depend on it.
+3. **Run capability.** `Run{Runs: true}` runs the cells. Otherwise the language is check-only: `NotRun` is the cell's failure and `Blocked`, `Reads`, `ReadsBlocked` the messages of the cells that read it (Julia today).
+4. **Optional capabilities**, found by type assertion: `CellAnalyzer` (fill more of a `Cell` than `Names`), `NameChecker` (names this language cannot hold), `Highlighter` (the go-rouge lexer for the HTML export; none means escaped, uncoloured), `Runtime` (the Go module the worker links: its import path, module and default version, which the kernel adds to the work module), `TypeLearner` (variables typed when the cell has run, as Ruby's).
+5. **Run emission.** A language that runs also needs a generator backend in `gen` (see `gen/backend.go` and Ruby's in `gen/ruby.go`): how its cells are written into the program. This is the one piece that lives outside `analysis`.
+
+Test it as `analysis/lang_test.go` does, with a fake language, and fuzz the dispatch (`FuzzDispatch`).
+
 ## How it works
 
 `format` parses the Markdown and `analysis` builds the dependency graph from the syntax. `gen` writes the Go program, type-checking cell by cell to learn the types of shared variables. `kernel` compiles it into a worker, drives it through `runtime`, and keeps results and values under a hash of each cell's code and inputs. `export` writes the HTML page. The reasons for each choice, and what is not done yet, are in [docs/design.md](docs/design.md); the [documentation](https://go-notebook.github.io/docs/) covers the cell rules, the command and the kernel in more detail.

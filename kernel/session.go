@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-notebook/notebook/analysis"
 	"github.com/go-notebook/notebook/runtime"
 )
 
@@ -85,7 +86,7 @@ func NewSession(opt Options, progress, stderr io.Writer) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	k.ruby = true
+	k.langs = []string{analysis.Ruby}
 	s := &Session{k: k, stderr: stderr}
 	if err := s.build(progress); err != nil {
 		return nil, err

@@ -20,6 +20,8 @@ package format
 
 import (
 	"strings"
+
+	"github.com/go-notebook/notebook/analysis"
 )
 
 // Kind tells prose from code.
@@ -91,7 +93,7 @@ func Parse(src string) *Notebook {
 			}
 		}
 		word, rest, _ := strings.Cut(strings.TrimSpace(info), " ")
-		if word != "go" && word != "ruby" && word != "julia" {
+		if word == "" || analysis.Lookup(word) == nil {
 			for k := i; k <= end && k < len(lines); k++ {
 				prose.WriteString(lines[k])
 			}

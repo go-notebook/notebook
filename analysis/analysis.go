@@ -47,6 +47,10 @@ type Cell struct {
 	Source string // the cell's source
 	Lang   string // Go, or Ruby (see AnalyzeRubyCell)
 
+	// Dynamic marks a cell whose names are not statically resolvable (see
+	// Names).
+	Dynamic bool
+
 	Chunks []Chunk
 
 	// Defines lists the notebook variables the cell defines: those of its

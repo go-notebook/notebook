@@ -10,10 +10,21 @@ import (
 
 // RubyPath is the import path of the package that runs Ruby cells: the
 // go-scikit Ruby bindings' cells, over the pure-Go Ruby go-embedded-ruby.
-const RubyPath = "github.com/go-scikit/ruby/cells"
+const RubyPath = analysis.RubyPath
 
 // RubyModule is the module RubyPath belongs to.
-const RubyModule = "github.com/go-scikit/ruby"
+const RubyModule = analysis.RubyModule
+
+// rubyBackend generates the Ruby cells: calls of the Ruby session.
+type rubyBackend struct{}
+
+func (rubyBackend) infer(g *generator, i int) { g.inferRuby(i) }
+
+func (rubyBackend) write(g *generator, b *strings.Builder, k int) { g.writeRubyCell(b, k) }
+
+func (rubyBackend) runtime() (name, prelude string) { return "_rb", "var _rbs = _rb.New()\n\n" }
+
+func init() { backends[analysis.Ruby] = rubyBackend{} }
 
 // Options configure GenerateWith.
 type Options struct {
@@ -23,17 +34,6 @@ type Options struct {
 	// variable with that type. A variable not in it is declared any, and the
 	// Go cells that read it are deferred until it is known.
 	RubyTypes map[string]string
-}
-
-func (g *generator) isRuby(i int) bool { return g.cells[i].Lang == analysis.Ruby }
-
-func (g *generator) hasRuby() bool {
-	for i := range g.cells {
-		if g.isRuby(i) {
-			return true
-		}
-	}
-	return false
 }
 
 // varOf returns the notebook variable named name, if the program has one.
@@ -155,13 +155,14 @@ func (g *generator) waits(i int) bool {
 func (g *generator) waitsOnDeferred(i int) string {
 	for _, d := range g.prog.Graph.Deps[i] {
 		if _, ok := g.prog.Deferred[d]; ok {
-			switch {
-			case g.isJulia(d):
-				g.juliaBlocked[i] = true
-				return fmt.Sprintf("not run: it reads cell %d, a Julia cell, and Julia cells are not run yet", d)
-			case g.juliaBlocked[d]:
-				g.juliaBlocked[i] = true
-				return fmt.Sprintf("not run: it reads cell %d, which is blocked by a Julia cell", d)
+			if g.checkOnly(d) {
+				l := g.cells[d].Lang
+				g.blockedBy[i] = l
+				return analysis.RunOf(l).Reads(d)
+			}
+			if l, ok := g.blockedBy[d]; ok {
+				g.blockedBy[i] = l
+				return analysis.RunOf(l).ReadsBlocked(d)
 			}
 			return fmt.Sprintf("not run yet: it reads cell %d, which waits for a Ruby cell", d)
 		}

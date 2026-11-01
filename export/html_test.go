@@ -11,6 +11,22 @@ import (
 	"github.com/go-notebook/notebook/kernel"
 )
 
+// An unknown language is highlighted as Go, a language with no lexer is
+// shown escaped, and a hostile word does not panic.
+func TestHighlightDispatch(t *testing.T) {
+	const src = "x := 1 < 2"
+	goHTML := highlight("go", src)
+	if !strings.Contains(goHTML, "&lt;") || highlight("nonesuch", src) != goHTML || highlight("\x00../", src) != goHTML {
+		t.Errorf("unknown language: %q", highlight("nonesuch", src))
+	}
+	if got := highlight("julia", src); got != "x := 1 &lt; 2" {
+		t.Errorf("julia: %q", got)
+	}
+	if highlight("ruby", src) == goHTML && highlight("ruby", "def f; end") == highlight("go", "def f; end") {
+		t.Error("ruby uses the ruby lexer")
+	}
+}
+
 func TestHTML(t *testing.T) {
 	nb := format.Parse("# Title <x>\n\nSome *prose*.\n\n```go\nx := 1 < 2\n```\n\n```go\ny\n```\n\n```go\nz\n```\n")
 	rep := &kernel.Report{Build: 1500 * time.Millisecond, Results: []kernel.Result{

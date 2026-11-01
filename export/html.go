@@ -19,6 +19,7 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 
+	"github.com/go-notebook/notebook/analysis"
 	"github.com/go-notebook/notebook/format"
 	"github.com/go-notebook/notebook/kernel"
 )
@@ -100,14 +101,16 @@ func writeBundle(b *bytes.Buffer, d map[string][]byte) {
 //
 // go-rouge has no Julia lexer yet: a Julia cell is shown escaped, uncoloured.
 func highlight(lang, src string) string {
-	switch lang {
-	case "julia":
-		return html.EscapeString(src)
-	case "ruby":
-	default:
-		lang = "go"
+	// A language without a Highlighter is shown escaped; an unknown one is Go.
+	l := analysis.Lookup(lang)
+	if l == nil {
+		l = analysis.Lookup(analysis.Go)
 	}
-	h, _ := rouge.Highlight(src, lang, "html") // fails only for an unknown lexer or formatter
+	hl, ok := l.(analysis.Highlighter)
+	if !ok {
+		return html.EscapeString(src)
+	}
+	h, _ := rouge.Highlight(src, hl.Lexer(), "html") // fails only for an unknown lexer or formatter
 	return h
 }
 

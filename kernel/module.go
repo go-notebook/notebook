@@ -31,8 +31,8 @@ func analyzeImports(srcs []string) []string {
 // imported packages' types for the generator. It does nothing when the
 // imports have not changed.
 func (k *Kernel) prepareModule(paths []string) error {
-	if k.ruby {
-		paths = append(paths, gen.RubyPath)
+	for _, l := range k.langs {
+		paths = append(paths, runtimeOf(l).Path)
 	}
 	sig := strings.Join(paths, "\n")
 	if k.types != nil && sig == k.imports {
@@ -96,12 +96,16 @@ func (k *Kernel) goMod() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "module nbwork\n\ngo 1.27.2\n\nrequire %s %s\n", modulePath, v)
-	if k.ruby {
-		rv := k.opt.RubyVersion
-		if rv == "" {
-			rv = DefaultRubyVersion
+	for _, l := range k.langs {
+		m := runtimeOf(l)
+		v := m.Version
+		if o := k.opt.Versions[l]; o != "" {
+			v = o
 		}
-		fmt.Fprintf(&b, "\nrequire %s %s\n", gen.RubyModule, rv)
+		if l == analysis.Ruby && k.opt.RubyVersion != "" {
+			v = k.opt.RubyVersion
+		}
+		fmt.Fprintf(&b, "\nrequire %s %s\n", m.Module, v)
 	}
 	var mods []string
 	for m := range k.opt.Replace {
@@ -122,7 +126,27 @@ const tagsFlag = "-tags=rbgo_core"
 // DefaultRubyVersion is the version of github.com/go-scikit/ruby a work
 // module requires for its Ruby cells, unless Options.RubyVersion says
 // otherwise.
-const DefaultRubyVersion = "v0.2.1"
+const DefaultRubyVersion = analysis.DefaultRubyVersion
+
+// runtimeLangs returns, sorted, the languages of the cells that link a Go
+// package (analysis.Runtime).
+func runtimeLangs(cells []gen.Code) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, c := range cells {
+		if _, ok := analysis.Lookup(c.Lang).(analysis.Runtime); ok && !seen[c.Lang] {
+			seen[c.Lang] = true
+			out = append(out, c.Lang)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// runtimeOf is the Go module language l's cells run on; l has a Runtime.
+func runtimeOf(l string) analysis.Module {
+	return analysis.Lookup(l).(analysis.Runtime).Runtime()
+}
 
 // modulePath is this module's path, which the runtime package belongs to.
 const modulePath = "github.com/go-notebook/notebook"

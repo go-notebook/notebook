@@ -131,6 +131,17 @@ A ` ```julia ` block is a Julia cell (v0.6.0 and later). It is parsed with [go-e
 
 No external `julia` is started: execution waits for go-embedded-julia's own lowering and runtime.
 
+## R cells: parsed and checked, not run yet
+
+A ` ```r ` block is an R cell (v0.8.0 and later). It is parsed with [go-embedded-r](https://github.com/go-embedded-r/r)'s parser, a pure-Go port of R 4.6's grammar that gives the same trees and tokens as R 4.6.2 on all of R's own `src/library` and `tests` (932 files):
+
+- **Syntax errors** are reported at the notebook's line and column, with R's own message (`5:8: cell 0: syntax error: unexpected symbol`).
+- **Names** follow R's scoping at the top level: `x <- v`, `x = v`, `v -> x`, `assign("x", v)`, `x$a <- v`, `names(x) <- v` and a top-level `for` variable define; the free variables of the cell and of its functions' bodies are read. A function assigned at the top level (`f <- function(x) …`) stays R's, as a Ruby method does; its variables cross to the other languages.
+- **Dynamic cells**: a cell whose names cannot be known from its text (`<<-`, `eval`, `assign`/`get` with a computed name, `attach`, `library`, `source`) depends on every earlier cell, and every later cell that reads a name depends on it.
+- **Running** an R cell fails, clearly: *R cells are parsed and checked, but not run yet: execution arrives with go-embedded-r's evaluator (milestones M2 and M3)*. The cells that read what it defines are **blocked**; the others run.
+
+No external `R` is started: execution waits for go-embedded-r's own evaluator.
+
 ## An interactive session: `notebook irb`
 
 `notebook irb` is irb on the same Ruby: rbgo with the go-scikit bindings, line by line, with no notebook file.

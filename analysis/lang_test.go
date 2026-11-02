@@ -53,10 +53,10 @@ func register(t *testing.T, l Language) {
 }
 
 func TestRegistry(t *testing.T) {
-	if got := Languages(); !reflect.DeepEqual(got, []string{"go", "julia", "ruby"}) {
+	if got := Languages(); !reflect.DeepEqual(got, []string{"go", "julia", "r", "ruby"}) {
 		t.Fatalf("Languages = %v", got)
 	}
-	for _, n := range []string{"go", "ruby", "julia", ""} {
+	for _, n := range []string{"go", "ruby", "julia", "r", ""} {
 		if Lookup(n) == nil {
 			t.Errorf("Lookup(%q) = nil", n)
 		}
@@ -64,13 +64,13 @@ func TestRegistry(t *testing.T) {
 	if Lookup("").Name() != "go" {
 		t.Error(`"" is not Go`)
 	}
-	for _, n := range []string{"r", "c", "Go", "go ", "rb\x00", strings.Repeat("x", 1<<16), "\xff\xfe", "../etc", "ruby,julia"} {
+	for _, n := range []string{"R", "c", "Go", "go ", "rb\x00", strings.Repeat("x", 1<<16), "\xff\xfe", "../etc", "ruby,julia"} {
 		if Lookup(n) != nil {
 			t.Errorf("Lookup(%q) found a language", n)
 		}
 	}
 	register(t, fakeLang{name: "fake"})
-	if Lookup("fake") == nil || len(Languages()) != 4 {
+	if Lookup("fake") == nil || len(Languages()) != 5 {
 		t.Error("fake not registered")
 	}
 	mustPanic(t, "duplicate", func() { Register(fakeLang{name: "fake"}) })

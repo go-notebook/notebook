@@ -3,6 +3,7 @@ package analysis
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -44,6 +45,33 @@ func (f fakeLang) Analyze(src string, lim Limits) (Names, []Diagnostic, error) {
 		}
 	}
 	return n, d, nil
+}
+
+// The analysis tests analyse Julia and R cells, as a program importing
+// analysis/parsers does; TestParserMissing takes the parsers away.
+func init() { EnableParsers() }
+
+// Without analysis/parsers, Julia and R stay registered, with their run
+// capability, and their cells fail with ParserMissing; nothing else changes.
+func TestParserMissing(t *testing.T) {
+	juliaParser, rParser = nil, nil
+	t.Cleanup(EnableParsers)
+	if !slices.Contains(Languages(), Julia) || !slices.Contains(Languages(), R) || RunOf(R).Runs {
+		t.Fatalf("languages %v", Languages())
+	}
+	g := AnalyzeSources([]Source{{Lang: Julia, Source: "x = 1"}, {Lang: R, Source: "y <- 1"}, {Lang: Go, Source: "z := 1"}})
+	for i, lang := range []string{"Julia", "R"} {
+		c := g.Cells[i]
+		if len(c.Errors) != 1 || c.Errors[0].Msg != ParserMissing(lang) || c.Errors[0].Cell != i || len(c.Defines) != 0 {
+			t.Errorf("%s cell %+v", lang, c)
+		}
+	}
+	if len(g.Cells[2].Errors) != 0 || !slices.Equal(g.Cells[2].Defines, []string{"z"}) {
+		t.Errorf("Go cell %+v", g.Cells[2])
+	}
+	if ParserMissing("R") != "this program has no R parser: it must import github.com/go-notebook/notebook/analysis/parsers" {
+		t.Error(ParserMissing("R"))
+	}
 }
 
 func register(t *testing.T, l Language) {

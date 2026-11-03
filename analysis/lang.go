@@ -282,10 +282,43 @@ const (
 	DefaultRubyVersion = "v0.2.1"
 )
 
+// The parsers of the check-only languages are linked into a program only when
+// it imports github.com/go-notebook/notebook/analysis/parsers, which calls
+// EnableParsers: a program that never analyses a Julia or an R cell (the
+// playground's default WebAssembly core) does not carry them. Without them
+// the languages stay registered, with their names and run capability, and a
+// cell of theirs fails with ParserMissing.
+var juliaParser, rParser func(index int, src string) *Cell
+
+// EnableParsers links go-embedded-julia's and go-embedded-r's parsers into
+// the analysis of Julia and R cells. Import
+// github.com/go-notebook/notebook/analysis/parsers rather than calling it.
+func EnableParsers() {
+	juliaParser, rParser = AnalyzeJuliaCell, AnalyzeRCell
+}
+
+// ParserMissing is the error of a cell of language lang (its badge name)
+// in a program built without its parser.
+func ParserMissing(lang string) string {
+	return "this program has no " + lang + " parser: it must import github.com/go-notebook/notebook/analysis/parsers"
+}
+
+// withParser analyses a cell with *parser, set by EnableParsers, or fails it
+// with ParserMissing.
+func withParser(parser *func(int, string) *Cell, name, lang string) func(int, string) *Cell {
+	return func(index int, src string) *Cell {
+		if *parser == nil {
+			return &Cell{Index: index, Source: src, Lang: name, Imports: map[string]string{},
+				Errors: []Error{{Cell: index, Msg: ParserMissing(lang)}}}
+		}
+		return (*parser)(index, src)
+	}
+}
+
 func init() {
 	Register(goLang{builtinLang{name: Go, cell: AnalyzeCell, run: Run{Runs: true}}})
 	Register(rubyLang{localsLang{builtinLang{name: Ruby, cell: AnalyzeRubyCell, run: Run{Runs: true}}}})
-	Register(juliaLang{localsLang{builtinLang{name: Julia, cell: AnalyzeJuliaCell, run: Run{
+	Register(juliaLang{localsLang{builtinLang{name: Julia, cell: withParser(&juliaParser, Julia, "Julia"), run: Run{
 		NotRun:  JuliaNotRun,
 		Blocked: JuliaBlocked,
 		Reads: func(c int) string {
@@ -295,7 +328,7 @@ func init() {
 			return fmt.Sprintf("not run: it reads cell %d, which is blocked by a Julia cell", c)
 		},
 	}}}})
-	Register(rLang{localsLang{builtinLang{name: R, cell: AnalyzeRCell, run: Run{
+	Register(rLang{localsLang{builtinLang{name: R, cell: withParser(&rParser, R, "R"), run: Run{
 		NotRun:  RNotRun,
 		Blocked: RBlocked,
 		Reads: func(c int) string {

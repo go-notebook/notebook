@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/go-notebook/notebook/analysis"
+	_ "github.com/go-notebook/notebook/analysis/parsers" // Julia and R cells are analysed, not refused
 )
 
 // RuntimePath is the import path of the package the program links.

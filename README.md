@@ -142,6 +142,16 @@ A ` ```r ` block is an R cell (v0.8.0 and later). It is parsed with [go-embedded
 
 No external `R` is started: execution waits for go-embedded-r's own evaluator.
 
+### The Julia and R parsers are opt-in (v0.9.0)
+
+The `gen`, `kernel` and `export` packages and the `notebook` command analyse Julia and R cells as above. A program that imports `analysis` alone must also import `analysis/parsers` to get the same:
+
+```go
+import _ "github.com/go-notebook/notebook/analysis/parsers"
+```
+
+Without it, Julia and R stay registered, with their names and run capability, and their cells fail with `analysis.ParserMissing`. The point is size: a WebAssembly program that never analyses those cells, such as the playground's default core, leaves out 1.44 MB of parser code. The parsers' package `init` tables, about 0.29 MB, still come in through `analysis`'s imports.
+
 ## An interactive session: `notebook irb`
 
 `notebook irb` is irb on the same Ruby: rbgo with the go-scikit bindings, line by line, with no notebook file.

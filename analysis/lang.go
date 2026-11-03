@@ -271,6 +271,10 @@ func (rubyLang) Runtime() Module {
 // juliaLang: go-rouge has no Julia lexer, so it is not a Highlighter.
 type juliaLang struct{ localsLang }
 
+// rLang: R cells' variables cross as Ruby's and Julia's do, their functions
+// do not; go-rouge has no R lexer, so it is not a Highlighter.
+type rLang struct{ localsLang }
+
 // The go-scikit Ruby bindings that run Ruby cells over go-embedded-ruby.
 const (
 	RubyPath           = "github.com/go-scikit/ruby/cells"
@@ -289,6 +293,16 @@ func init() {
 		},
 		ReadsBlocked: func(c int) string {
 			return fmt.Sprintf("not run: it reads cell %d, which is blocked by a Julia cell", c)
+		},
+	}}}})
+	Register(rLang{localsLang{builtinLang{name: R, cell: AnalyzeRCell, run: Run{
+		NotRun:  RNotRun,
+		Blocked: RBlocked,
+		Reads: func(c int) string {
+			return fmt.Sprintf("not run: it reads cell %d, an R cell, and R cells are not run yet", c)
+		},
+		ReadsBlocked: func(c int) string {
+			return fmt.Sprintf("not run: it reads cell %d, which is blocked by an R cell", c)
 		},
 	}}}})
 }

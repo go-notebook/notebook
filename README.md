@@ -131,16 +131,33 @@ A ` ```julia ` block is a Julia cell (v0.6.0 and later). It is parsed with [go-e
 
 No external `julia` is started: execution waits for go-embedded-julia's own lowering and runtime.
 
-## R cells: parsed and checked, not run yet
+## R cells
 
-A ` ```r ` block is an R cell (v0.8.0 and later). It is parsed with [go-embedded-r](https://github.com/go-embedded-r/r)'s parser, a pure-Go port of R 4.6's grammar that gives the same trees and tokens as R 4.6.2 on all of R's own `src/library` and `tests` (932 files):
+A ` ```r ` block is an R cell (parsed since v0.8.0, run after v0.10.0). R is [go-embedded-r](https://github.com/go-embedded-r/r) (v0.3.0), a pure-Go R: no external `R` is started. Its parser, a port of R 4.6's grammar that gives the same trees and tokens as R 4.6.2 on all of R's own `src/library` and `tests` (932 files), checks the cell; its evaluator runs it.
 
+```r
+xs <- c(2.1, 3.4, 1.9, 5.6)
+total <- sum(xs)
+total / length(xs)
+```
+
+- **One session.** The R cells of a notebook share one R session in the worker, so a variable assigned in one cell is there in the next, as in an R console. A cell re-runs only when it or an R cell it reads changes; after the worker is rebuilt, the R cells that a stale cell reads run again in the new session first.
+- **Output.** What a cell prints is its output, as an R console shows it: `print`, `cat`, and the value of every visible top-level expression. An invisible value (`x <- 1`, `invisible(x)`) prints nothing. `message()` and the cell's warnings go to the standard error, the warnings in R's form (`Warning message:` then `In f(x) : text`; `Warning messages:` and a numbered line each when there are several). An error fails the cell as `Error in f(x) : text`, after the output written before it, and the cells that read it do not run. A cell that goes over a limit fails the same way.
 - **Syntax errors** are reported at the notebook's line and column, with R's own message (`5:8: cell 0: syntax error: unexpected symbol`).
-- **Names** follow R's scoping at the top level: `x <- v`, `x = v`, `v -> x`, `assign("x", v)`, `x$a <- v`, `names(x) <- v` and a top-level `for` variable define; the free variables of the cell and of its functions' bodies are read. A function assigned at the top level (`f <- function(x) …`) stays R's, as a Ruby method does; its variables cross to the other languages.
-- **Dynamic cells**: a cell whose names cannot be known from its text (`<<-`, `eval`, `assign`/`get` with a computed name, `attach`, `library`, `source`) depends on every earlier cell, and every later cell that reads a name depends on it.
-- **Running** an R cell fails, clearly: *R cells are parsed and checked, but not run yet: execution arrives with go-embedded-r's evaluator (milestones M2 and M3)*. The cells that read what it defines are **blocked**; the others run.
+- **Names** follow R's scoping at the top level: `x <- v`, `x = v`, `v -> x`, `assign("x", v)`, `x$a <- v`, `names(x) <- v` and a top-level `for` variable define; the free variables of the cell and of its functions' bodies are read. A cell whose names cannot be known from its text (`<<-`, `eval`, `assign`/`get` with a computed name, `attach`, `library`, `source`) is **dynamic**: it depends on every earlier cell, and every later cell that reads a name depends on it.
+- **R variables stay in R.** They are not shared with Go, Ruby, Julia or C cells in either direction yet: a Go cell that reads an R name finds it undefined, and an R cell does not see a Go variable (`analysis.Isolated`). A cell shows text only, no figure.
+- **Limits.** go-embedded-r bounds only the depth of an evaluation and the length of a vector unless told to, and a notebook may come from anyone, so the kernel always bounds each R cell (`kernel.Options.R`; a zero field is the default, a negative one no bound):
 
-No external `R` is started: execution waits for go-embedded-r's own evaluator.
+  | Limit | Default | Ends a cell with |
+  |---|---|---|
+  | allocation, `MaxAlloc` | 512 MiB of vectors in total over the cell, garbage included | `Error: memory limit exceeded: more than 536870912 bytes of vectors allocated` |
+  | calls, `MaxSteps` | 50 million (12 to 16 million iterations of `s <- s + i`) | `Error: evaluation step limit reached` |
+  | time, `Timeout` | 30 s | `stopped: the R cell ran longer than 30s, the limit` |
+  | depth, vector length | R's 5000 evaluations; 2^26 elements | `Error: evaluation nested too deeply: …`; `Error in numeric(2^27) : cannot allocate vector of length 134217728` |
+
+  The session and its variables survive a limit. `--timeout` and `--memory` apply as to every cell, and kill the worker, session included. Each limit and its reasons are in [docs/design.md](docs/design.md#r-cells); the allocation bomb test (`rcells.TestAllocBomb`) runs in CI by itself under `GOMEMLIMIT` and `ulimit -v`.
+
+The evaluator is linked only into a worker that has R cells: `analysis`, `gen`, `kernel`, `export` and the command do not import it (`analysis.TestNoEvaluatorImport`), so a WebAssembly core that analyses cells carries no more than before: 4,987,833 bytes without `analysis/parsers` and 10,567,013 with it at v0.10.0, 4,987,322 and 10,567,902 with this change (probe analysing a Go, a C and an R cell, go 1.27.3, `GOOS=js GOARCH=wasm`, `-s -w`).
 
 ## C cells: checked, not run yet
 
@@ -214,8 +231,8 @@ type Names struct{ Defines, Uses []string; Dynamic bool }
 
 1. **Implement `Language`** and call `analysis.Register` from `init`. `Analyze` must refuse a source over `lim.MaxBytes` (and nesting over `lim.MaxDepth`) with an error, never a panic; diagnostics carry a byte offset in the cell. `Crosses` is the owner's rule for what the other languages read: a Go cell sees a Ruby local, not a Ruby method.
 2. **Dynamic cells.** Set `Names.Dynamic` for a cell whose names cannot be resolved statically (R's `<<-`, `assign`/`get` with computed names, `eval(parse())`, `attach`, `library()`). The graph makes it depend on every earlier cell, and every later cell that reads any name depend on it.
-3. **Run capability.** `Run{Runs: true}` runs the cells. Otherwise the language is check-only: `NotRun` is the cell's failure and `Blocked`, `Reads`, `ReadsBlocked` the messages of the cells that read it (Julia today).
-4. **Optional capabilities**, found by type assertion: `CellAnalyzer` (fill more of a `Cell` than `Names`), `NameChecker` (names this language cannot hold), `Highlighter` (the go-rouge lexer for the HTML export; none means escaped, uncoloured), `Runtime` (the Go module the worker links: its import path, module and default version, which the kernel adds to the work module), `TypeLearner` (variables typed when the cell has run, as Ruby's), `Sequential` (cells that depend on the earlier cells of the same language: `Begin() any` starts the notebook's state, `AnalyzeNext(state any, index int, src string) (*Cell, any)` analyses a cell in it and returns the state for the next one; the graph threads it through that language's cells in notebook order, and a cell with an error should return the state it was given; C's).
+3. **Run capability.** `Run{Runs: true}` runs the cells. Otherwise the language is check-only: `NotRun` is the cell's failure and `Blocked`, `Reads`, `ReadsBlocked` the messages of the cells that read it (Julia and C today; R runs).
+4. **Optional capabilities**, found by type assertion: `CellAnalyzer` (fill more of a `Cell` than `Names`), `NameChecker` (names this language cannot hold), `Highlighter` (the go-rouge lexer for the HTML export; none means escaped, uncoloured), `Runtime` (the Go module the worker links: its import path, module and default version, which the kernel adds to the work module), `TypeLearner` (variables typed when the cell has run, as Ruby's), `Isolated` (cells that share no variable with another language's, as R's: `Shared` is false across languages when either is isolated), `Sequential` (cells that depend on the earlier cells of the same language: `Begin() any` starts the notebook's state, `AnalyzeNext(state any, index int, src string) (*Cell, any)` analyses a cell in it and returns the state for the next one; the graph threads it through that language's cells in notebook order, and a cell with an error should return the state it was given; C's).
 5. **Run emission.** A language that runs also registers a `gen.Backend` with `gen.RegisterBackend(name, backend)`, from its own package: `Infer` declares the cell's variables, `Write` writes its function, `Runtime` names the import and the prelude, and the package it imports comes from its `analysis.Runtime`. The `gen.Context` it receives exposes the cell, its inputs, the declared variables and type resolution. No edit of `gen` is needed; Ruby's backend (`gen/ruby.go`) and `TestRegisteredBackend` are the models.
 
 Test it as `analysis/lang_test.go` does, with a fake language, and fuzz the dispatch (`FuzzDispatch`).

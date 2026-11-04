@@ -98,6 +98,9 @@ func (k *Kernel) goMod() string {
 	fmt.Fprintf(&b, "module nbwork\n\ngo 1.27.2\n\nrequire %s %s\n", modulePath, v)
 	for _, l := range k.langs {
 		m := runtimeOf(l)
+		if m.Module == modulePath {
+			continue // this module's own package (R's rcells): required above
+		}
 		v := m.Version
 		if o := k.opt.Versions[l]; o != "" {
 			v = o

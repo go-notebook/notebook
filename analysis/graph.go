@@ -232,13 +232,24 @@ func (g *Graph) Upstream(cells ...int) []int {
 //   - a Julia cell's variables, not its functions, macros, constants or types,
 //     are seen by the other languages as a Ruby cell's are, and a Julia cell
 //     sees their variables. Julia cells do not run yet, so a cell that reads
-//     one of their variables is blocked (see gen), but the edge is there.
+//     one of their variables is blocked (see gen), but the edge is there;
+//   - an R cell shares its variables with the other R cells only (Isolated):
+//     they live in the worker's R session, and no other language sees them.
 func Shared(owner, user *Cell, name string) bool {
 	if owner.Lang == user.Lang {
 		return true
 	}
+	if isolated(owner.Lang) || isolated(user.Lang) {
+		return false
+	}
 	l := Lookup(owner.Lang)
 	return l != nil && l.Crosses(owner, user, name)
+}
+
+// isolated reports whether the language of the given name is Isolated.
+func isolated(name string) bool {
+	i, ok := Lookup(name).(Isolated)
+	return ok && i.Isolated()
 }
 
 func contains(list []string, s string) bool {

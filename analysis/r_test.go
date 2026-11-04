@@ -2,12 +2,33 @@ package analysis
 
 import (
 	"errors"
+	"os/exec"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/go-embedded-r/r/syntax"
 )
+
+// Only a worker that has R cells links go-embedded-r's evaluator, through
+// rcells: neither the analysis, nor the generator, the kernel, the exporter or
+// the notebook command may import it, or every WebAssembly core and every
+// command would carry it. (The parser, analysis/parsers' business, is another
+// package.)
+func TestNoEvaluatorImport(t *testing.T) {
+	if testing.Short() {
+		t.Skip("needs the go command")
+	}
+	out, err := exec.Command("go", "list", "-deps", ".", "../gen", "../kernel", "../export", "../format", "../runtime", "../cmd/notebook").CombinedOutput()
+	if err != nil {
+		t.Fatalf("go list: %v\n%s", err, out)
+	}
+	for _, p := range strings.Fields(string(out)) {
+		if strings.HasPrefix(p, "github.com/go-embedded-r/r/eval") || strings.HasSuffix(p, "/notebook/rcells") {
+			t.Errorf("a package that must not carry R's evaluator depends on %s", p)
+		}
+	}
+}
 
 func TestAnalyzeRCell(t *testing.T) {
 	for name, tc := range map[string]struct {
@@ -105,31 +126,31 @@ func TestROffset(t *testing.T) {
 func TestRGraph(t *testing.T) {
 	g := AnalyzeSources([]Source{
 		{Lang: R, Source: "x <- 1\nf <- function(y) y"},
-		{Lang: Go, Source: "z := x"},       // reads the R variable
-		{Lang: Ruby, Source: "w = f(1)"},   // f is an R function: not shared
-		{Lang: R, Source: "v <- z + w"},    // reads the Go and Ruby variables
+		{Lang: Go, Source: "z := x"},       // reads the R variable: not shared
+		{Lang: Ruby, Source: "w = f(1)"},   // f is an R function: not shared either
+		{Lang: R, Source: "v <- z + w"},    // reads the Go and Ruby variables: not shared
+		{Lang: R, Source: "u <- x + 1"},    // reads an R variable: shared
 		{Lang: R, Source: "assign(nm, 1)"}, // dynamic: depends on every earlier cell
 		{Lang: Go, Source: "q := 1"},
 	})
 	if len(g.Errors) != 0 {
 		t.Errorf("errors %+v", g.Errors)
 	}
-	if !slices.Equal(g.Deps[1], []int{0}) || len(g.Deps[2]) != 0 || !slices.Equal(g.Deps[3], []int{1, 2}) || !slices.Equal(g.Deps[4], []int{0, 1, 2, 3}) {
+	if len(g.Deps[1]) != 0 || len(g.Deps[2]) != 0 || len(g.Deps[3]) != 0 || !slices.Equal(g.Deps[4], []int{0}) || !slices.Equal(g.Deps[5], []int{0, 1, 2, 3, 4}) {
 		t.Errorf("deps %v", g.Deps)
 	}
-	if RBlocked(4) != "blocked: it depends on cell 4, an R cell, and R cells are not run yet" {
-		t.Error(RBlocked(4))
-	}
-	run := RunOf(R)
-	if run.Runs || run.NotRun != RNotRun || run.Blocked(1) != RBlocked(1) ||
-		run.Reads(2) != "not run: it reads cell 2, an R cell, and R cells are not run yet" ||
-		run.ReadsBlocked(3) != "not run: it reads cell 3, which is blocked by an R cell" {
+	if run := RunOf(R); !run.Runs {
 		t.Errorf("run %+v", run)
 	}
-	// An R variable named like a Go keyword stays out of Go's sight.
-	g = AnalyzeSources([]Source{{Lang: R, Source: "type <- 1"}, {Lang: Go, Source: "_ = 1"}})
-	if !Shared(g.Cells[0], &Cell{Lang: Ruby}, "type") || Shared(g.Cells[0], g.Cells[1], "type") {
-		t.Error("type crosses to Go")
+	rt, ok := Lookup(R).(Runtime)
+	if !ok || rt.Runtime() != (Module{Path: RPath, Module: RModule}) {
+		t.Errorf("runtime %+v", rt)
+	}
+	// An R variable is seen by no other language, whatever its name, and an
+	// R cell sees no other language's variable.
+	if Lookup(R).Crosses(g.Cells[0], &Cell{Lang: Ruby}, "x") || Shared(g.Cells[0], &Cell{Lang: Ruby}, "x") || Shared(g.Cells[0], &Cell{Lang: Go}, "x") || Shared(&Cell{Lang: Go}, g.Cells[0], "z") ||
+		Shared(&Cell{Lang: Ruby}, g.Cells[0], "w") || !Shared(g.Cells[0], g.Cells[3], "x") || isolated(Go) || isolated("nonesuch") || !isolated(R) {
+		t.Error("an R variable crosses")
 	}
 	if _, ok := Lookup(R).(Highlighter); ok {
 		t.Error("R is a Highlighter, but go-rouge has no R lexer")

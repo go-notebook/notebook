@@ -3,7 +3,6 @@ package analysis
 import (
 	"errors"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/go-embedded-r/r/syntax"
@@ -12,15 +11,13 @@ import (
 // R is the language of ```r cells.
 const R = "r"
 
-// RNotRun is the failure of every R cell: go-embedded-r parses R exactly as
-// R 4.6 does, but has no evaluator yet.
-const RNotRun = "R cells are parsed and checked, but not run yet: execution arrives with go-embedded-r's evaluator (milestones M2 and M3)"
-
-// RBlocked is the failure of a cell that reads, directly or through other
-// cells, what R cell r defines.
-func RBlocked(r int) string {
-	return "blocked: it depends on cell " + strconv.Itoa(r) + ", an R cell, and R cells are not run yet"
-}
+// The package that runs R cells in the worker: this module's rcells, over
+// go-embedded-r's evaluator. It belongs to this module, whose version the work
+// module already requires.
+const (
+	RPath   = "github.com/go-notebook/notebook/rcells"
+	RModule = "github.com/go-notebook/notebook"
+)
 
 // rLimits bound the parse of an R cell: a notebook may come from anyone, and
 // the parser must neither run long nor nest without end on it.

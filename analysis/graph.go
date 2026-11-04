@@ -41,8 +41,9 @@ func Analyze(sources []string) *Graph {
 // defines and the reverse, and the graph orders them together.
 func AnalyzeSources(sources []Source) *Graph {
 	g := &Graph{Owner: map[string]int{}}
+	states := map[string]any{} // of the Sequential languages
 	for i, s := range sources {
-		c := analyzeIn(s.Lang, i, s.Source)
+		c := analyzeSeq(states, s.Lang, i, s.Source)
 		g.Cells = append(g.Cells, c)
 		g.Errors = append(g.Errors, c.Errors...)
 	}

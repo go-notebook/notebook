@@ -1,0 +1,2 @@
+go test fuzz v1
+string("#define A(x) A(A(x))\nint a = A(1);")

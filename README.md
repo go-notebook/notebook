@@ -142,15 +142,27 @@ A ` ```r ` block is an R cell (v0.8.0 and later). It is parsed with [go-embedded
 
 No external `R` is started: execution waits for go-embedded-r's own evaluator.
 
-### The Julia and R parsers are opt-in (v0.9.0)
+## C cells: checked, not run yet
 
-The `gen`, `kernel` and `export` packages and the `notebook` command analyse Julia and R cells as above. A program that imports `analysis` alone must also import `analysis/parsers` to get the same:
+A ` ```c ` block is a C cell. It is checked with [go-embedded-c](https://github.com/go-embedded-c/c)'s front end (cc/v4 behind the `cell` package), which accepts what C allows at file scope and statements alike:
+
+- **Cells are not independent.** A C cell sees the typedefs, macros, tags and declarations of the C cells before it, in notebook order (`analysis.Sequential`): `myint v = N;` is fine in a cell after the one that has `typedef int myint;` and `#define N 3`, and an error alone. A cell with an error leaves nothing behind for the next ones.
+- **Errors** are reported at the notebook's line and column, with cc/v4's message. An error outside the cell (in a header) is reported at the start of the cell and says so. `#include` takes the C library's headers and clang's.
+- **Names**: variables, functions, typedefs, `struct`/`union`/`enum` tags (`struct s`), enumerators and macros define; the names a cell reads from earlier C cells are its uses, and give the graph its edges. Only **variables** cross to the other languages; functions, typedefs, tags, enumerators and macros stay C's. As elsewhere in the graph, a name is defined by one cell, so a prototype in one cell and its definition in another are reported.
+- **Limits**: a cell is at most 1 MiB, nests brackets at most 256 deep, and a macro expansion that would produce more than 65536 tokens (`#define D(a) ((a)+(a))` nested 40 deep is 2^40) is refused, in well under a second.
+- **Running** a C cell fails, clearly: *C cells are not run yet (go-embedded-c M2: code generation)*. The cells that read what it defines, C cells included, are **blocked**; the others run.
+
+No external C compiler is started.
+
+### The Julia, R and C parsers are opt-in (v0.9.0)
+
+The `gen`, `kernel` and `export` packages and the `notebook` command analyse Julia, R and C cells as above. A program that imports `analysis` alone must also import `analysis/parsers` to get the same:
 
 ```go
 import _ "github.com/go-notebook/notebook/analysis/parsers"
 ```
 
-Without it, Julia and R stay registered, with their names and run capability, and their cells fail with `analysis.ParserMissing`. The point is size: a WebAssembly program that never analyses those cells, such as the playground's default core, leaves out 1.44 MB of parser code. The parsers' package `init` tables, about 0.29 MB, still come in through `analysis`'s imports.
+Without it, Julia, R and C stay registered, with their names and run capability, and their cells fail with `analysis.ParserMissing`. The point is size: a WebAssembly program that never analyses those cells, such as the playground's default core, leaves out 1.44 MB of parser code. The parsers' package `init` tables, about 0.29 MB, still come in through `analysis`'s imports. Measured on a probe that analyses a Go and a C cell (go 1.27, `GOOS=js GOARCH=wasm`): 6.28 MB without `analysis/parsers`, 10.75 MB with it; v0.9.0 was 5.06 and 6.53 MB. Of the 1.2 MB C added to the build without the parsers, the package `init` tables of go-embedded-c's front end are the cause.
 
 ## An interactive session: `notebook irb`
 
@@ -203,7 +215,7 @@ type Names struct{ Defines, Uses []string; Dynamic bool }
 1. **Implement `Language`** and call `analysis.Register` from `init`. `Analyze` must refuse a source over `lim.MaxBytes` (and nesting over `lim.MaxDepth`) with an error, never a panic; diagnostics carry a byte offset in the cell. `Crosses` is the owner's rule for what the other languages read: a Go cell sees a Ruby local, not a Ruby method.
 2. **Dynamic cells.** Set `Names.Dynamic` for a cell whose names cannot be resolved statically (R's `<<-`, `assign`/`get` with computed names, `eval(parse())`, `attach`, `library()`). The graph makes it depend on every earlier cell, and every later cell that reads any name depend on it.
 3. **Run capability.** `Run{Runs: true}` runs the cells. Otherwise the language is check-only: `NotRun` is the cell's failure and `Blocked`, `Reads`, `ReadsBlocked` the messages of the cells that read it (Julia today).
-4. **Optional capabilities**, found by type assertion: `CellAnalyzer` (fill more of a `Cell` than `Names`), `NameChecker` (names this language cannot hold), `Highlighter` (the go-rouge lexer for the HTML export; none means escaped, uncoloured), `Runtime` (the Go module the worker links: its import path, module and default version, which the kernel adds to the work module), `TypeLearner` (variables typed when the cell has run, as Ruby's).
+4. **Optional capabilities**, found by type assertion: `CellAnalyzer` (fill more of a `Cell` than `Names`), `NameChecker` (names this language cannot hold), `Highlighter` (the go-rouge lexer for the HTML export; none means escaped, uncoloured), `Runtime` (the Go module the worker links: its import path, module and default version, which the kernel adds to the work module), `TypeLearner` (variables typed when the cell has run, as Ruby's), `Sequential` (cells that depend on the earlier cells of the same language: `Begin() any` starts the notebook's state, `AnalyzeNext(state any, index int, src string) (*Cell, any)` analyses a cell in it and returns the state for the next one; the graph threads it through that language's cells in notebook order, and a cell with an error should return the state it was given; C's).
 5. **Run emission.** A language that runs also registers a `gen.Backend` with `gen.RegisterBackend(name, backend)`, from its own package: `Infer` declares the cell's variables, `Write` writes its function, `Runtime` names the import and the prelude, and the package it imports comes from its `analysis.Runtime`. The `gen.Context` it receives exposes the cell, its inputs, the declared variables and type resolution. No edit of `gen` is needed; Ruby's backend (`gen/ruby.go`) and `TestRegisteredBackend` are the models.
 
 Test it as `analysis/lang_test.go` does, with a fake language, and fuzz the dispatch (`FuzzDispatch`).

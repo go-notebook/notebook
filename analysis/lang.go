@@ -85,6 +85,19 @@ type CellAnalyzer interface {
 	AnalyzeCell(index int, src string) *Cell
 }
 
+// Sequential is implemented by a language whose cells depend on the earlier
+// cells of the same language, in notebook order: C cells see the typedefs,
+// macros and declarations of the C cells before them. The graph calls Begin
+// once for the notebook, then AnalyzeNext for each of the language's cells in
+// order, passing the state the previous call returned; the state is opaque to
+// the graph. A cell with errors should return the state it was given, so that
+// a broken cell leaves nothing behind. It is used in place of CellAnalyzer and
+// Analyze; the other languages are untouched.
+type Sequential interface {
+	Begin() any
+	AnalyzeNext(state any, index int, src string) (*Cell, any)
+}
+
 // NameChecker is implemented by a language that cannot hold every name: when
 // a cell of another language defines a name, a cell of this language sees it
 // only if ValidName holds (a Go variable cannot be named like a keyword).
@@ -187,6 +200,13 @@ func RunOf(name string) Run {
 // analyzeIn analyses cell index in language name with the registered
 // implementation; an unknown language is analysed as Go, as before.
 func analyzeIn(name string, index int, src string) *Cell {
+	return analyzeSeq(nil, name, index, src)
+}
+
+// analyzeSeq is analyzeIn for a notebook's cells in order: states holds the
+// state of each Sequential language, and is nil when the cells are analysed
+// one at a time.
+func analyzeSeq(states map[string]any, name string, index int, src string) *Cell {
 	l := Lookup(name)
 	if l == nil {
 		l = Lookup(Go)
@@ -194,6 +214,17 @@ func analyzeIn(name string, index int, src string) *Cell {
 	if len(src) > DefaultLimits.MaxBytes {
 		return &Cell{Index: index, Lang: l.Name(), Imports: map[string]string{},
 			Errors: []Error{{Cell: index, Msg: fmt.Sprintf("the cell is %d bytes; the limit is %d", len(src), DefaultLimits.MaxBytes)}}}
+	}
+	if seq, ok := l.(Sequential); ok {
+		state, seen := states[l.Name()]
+		if !seen {
+			state = seq.Begin()
+		}
+		c, next := seq.AnalyzeNext(state, index, src)
+		if states != nil {
+			states[l.Name()] = next
+		}
+		return c
 	}
 	if ca, ok := l.(CellAnalyzer); ok {
 		return ca.AnalyzeCell(index, src)
@@ -284,17 +315,17 @@ const (
 
 // The parsers of the check-only languages are linked into a program only when
 // it imports github.com/go-notebook/notebook/analysis/parsers, which calls
-// EnableParsers: a program that never analyses a Julia or an R cell (the
+// EnableParsers: a program that never analyses a Julia, R or C cell (the
 // playground's default WebAssembly core) does not carry them. Without them
 // the languages stay registered, with their names and run capability, and a
 // cell of theirs fails with ParserMissing.
 var juliaParser, rParser func(index int, src string) *Cell
 
-// EnableParsers links go-embedded-julia's and go-embedded-r's parsers into
-// the analysis of Julia and R cells. Import
+// EnableParsers links go-embedded-julia's, go-embedded-r's and
+// go-embedded-c's parsers into the analysis of Julia, R and C cells. Import
 // github.com/go-notebook/notebook/analysis/parsers rather than calling it.
 func EnableParsers() {
-	juliaParser, rParser = AnalyzeJuliaCell, AnalyzeRCell
+	juliaParser, rParser, cParser = AnalyzeJuliaCell, AnalyzeRCell, analyzeCCell
 }
 
 // ParserMissing is the error of a cell of language lang (its badge name)
@@ -337,5 +368,11 @@ func init() {
 		ReadsBlocked: func(c int) string {
 			return fmt.Sprintf("not run: it reads cell %d, which is blocked by an R cell", c)
 		},
+	}}}})
+	Register(cLang{localsLang{builtinLang{name: C, cell: cStandalone, run: Run{
+		NotRun:       CNotRun,
+		Blocked:      CBlocked,
+		Reads:        cReads,
+		ReadsBlocked: cReadsBlocked,
 	}}}})
 }

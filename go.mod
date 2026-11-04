@@ -3,6 +3,7 @@ module github.com/go-notebook/notebook
 go 1.27.2
 
 require (
+	github.com/go-embedded-c/c v0.1.0
 	github.com/go-embedded-julia/julia v0.5.0
 	github.com/go-embedded-r/r v0.1.0
 	github.com/go-rouge/rouge v0.7.1
@@ -25,7 +26,13 @@ require (
 	github.com/go-ruby-regexp/regexp v0.1.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/opt v0.2.0 // indirect
+	modernc.org/sortutil v1.2.1 // indirect
+	modernc.org/strutil v1.2.1 // indirect
+	modernc.org/token v1.1.0 // indirect
 )

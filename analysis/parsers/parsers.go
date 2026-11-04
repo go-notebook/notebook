@@ -12,4 +12,7 @@ package parsers
 
 import "github.com/go-notebook/notebook/analysis"
 
-func init() { analysis.EnableParsers() }
+func init() {
+	analysis.EnableParsers()
+	analysis.SetCParser(analyzeCCell)
+}

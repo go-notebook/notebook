@@ -162,7 +162,7 @@ The `gen`, `kernel` and `export` packages and the `notebook` command analyse Jul
 import _ "github.com/go-notebook/notebook/analysis/parsers"
 ```
 
-Without it, Julia, R and C stay registered, with their names and run capability, and their cells fail with `analysis.ParserMissing`. The point is size: a WebAssembly program that never analyses those cells, such as the playground's default core, leaves out 1.44 MB of parser code. The parsers' package `init` tables, about 0.29 MB, still come in through `analysis`'s imports. Measured on a probe that analyses a Go and a C cell (go 1.27, `GOOS=js GOARCH=wasm`): 6.28 MB without `analysis/parsers`, 10.75 MB with it; v0.9.0 was 5.06 and 6.53 MB. Of the 1.2 MB C added to the build without the parsers, the package `init` tables of go-embedded-c's front end are the cause.
+Without it, Julia, R and C stay registered, with their names and run capability, and their cells fail with `analysis.ParserMissing`. The point is size: a WebAssembly program that never analyses those cells, such as the playground's default core, leaves out 1.44 MB of parser code. The parsers' package `init` tables, about 0.29 MB, still come in through `analysis`'s imports. Measured on a probe that analyses a Go and a C cell (go 1.27, `GOOS=js GOARCH=wasm`): 5.07 MB without `analysis/parsers`, 10.75 MB with it; v0.9.0 was 5.06 and 6.53 MB. `analysis` does not import go-embedded-c (`TestNoEmbeddedCImport`): the C front end is linked by `analysis/parsers` through `analysis.SetCParser`, so a program without the parsers is 0.01 MB larger than at v0.9.0. Natively on darwin/arm64: 4.18 MB without, 8.11 MB with (v0.9.0: 4.17 and 5.24).
 
 ## An interactive session: `notebook irb`
 

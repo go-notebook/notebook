@@ -1,4 +1,4 @@
-package analysis
+package parsers
 
 import (
 	"strings"
@@ -29,7 +29,7 @@ func BenchmarkAnalyzeCCell(b *testing.B) {
 	b.SetBytes(int64(len(src)))
 	b.ReportAllocs()
 	for b.Loop() {
-		AnalyzeCCell(0, src)
+		analyzeAlone(0, src)
 	}
 }
 
@@ -43,7 +43,7 @@ func FuzzAnalyzeCCell(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, src string) {
-		c := AnalyzeCCell(0, src)
+		c := analyzeAlone(0, src)
 		for _, e := range c.Errors {
 			if strings.Contains(e.Msg, "C parser failed") {
 				t.Fatalf("%q: the front end panicked", src)

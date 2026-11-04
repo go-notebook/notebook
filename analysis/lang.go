@@ -321,11 +321,12 @@ const (
 // cell of theirs fails with ParserMissing.
 var juliaParser, rParser func(index int, src string) *Cell
 
-// EnableParsers links go-embedded-julia's, go-embedded-r's and
-// go-embedded-c's parsers into the analysis of Julia, R and C cells. Import
+// EnableParsers links go-embedded-julia's and go-embedded-r's parsers into
+// the analysis of Julia and R cells; analysis/parsers also calls SetCParser
+// for C, whose front end this package does not import at all. Import
 // github.com/go-notebook/notebook/analysis/parsers rather than calling it.
 func EnableParsers() {
-	juliaParser, rParser, cParser = AnalyzeJuliaCell, AnalyzeRCell, analyzeCCell
+	juliaParser, rParser = AnalyzeJuliaCell, AnalyzeRCell
 }
 
 // ParserMissing is the error of a cell of language lang (its badge name)

@@ -54,8 +54,9 @@ func init() { EnableParsers() }
 // Without analysis/parsers, Julia and R stay registered, with their run
 // capability, and their cells fail with ParserMissing; nothing else changes.
 func TestParserMissing(t *testing.T) {
+	oldC := cParser
 	juliaParser, rParser, cParser = nil, nil, nil
-	t.Cleanup(EnableParsers)
+	t.Cleanup(func() { EnableParsers(); cParser = oldC })
 	if !slices.Contains(Languages(), Julia) || !slices.Contains(Languages(), R) || !slices.Contains(Languages(), C) || RunOf(R).Runs || RunOf(C).Runs {
 		t.Fatalf("languages %v", Languages())
 	}

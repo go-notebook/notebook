@@ -176,3 +176,56 @@ func TestCGraph(t *testing.T) {
 		t.Errorf("Analyze: %+v %v %v", n, diags, err)
 	}
 }
+
+// A name is defined by its definition, or failing that by its first tentative
+// definition; a declaration (a prototype, an extern, a forward struct) reads
+// the name, and is neither an owner nor in conflict. A second definition is
+// go-notebook's rule, not C's.
+func TestCDefinitions(t *testing.T) {
+	for name, tc := range map[string]struct {
+		cells    []string
+		name     string
+		owner    int
+		readers  [][]int // Deps of each cell
+		errCells []int
+	}{
+		"prototype then definition":      {[]string{"int f(int);", "int f(int a) { return a; }"}, "f", 1, [][]int{{1}, {}}, nil},
+		"extern then definition":         {[]string{"extern int x;", "int x = 1;"}, "x", 1, [][]int{{1}, {}}, nil},
+		"definition then extern":         {[]string{"int x = 1;", "extern int x;"}, "x", 0, [][]int{{}, {0}}, nil},
+		"tentative then tentative":       {[]string{"int x;", "int x;"}, "x", 0, [][]int{{}, {}}, nil},
+		"tentative then definition":      {[]string{"int x;", "int x = 1;"}, "x", 1, [][]int{{}, {}}, nil},
+		"definition then tentative":      {[]string{"int x = 1;", "int x;"}, "x", 0, [][]int{{}, {}}, nil},
+		"forward struct then struct":     {[]string{"struct s;", "struct s { int a; };"}, "struct s", 1, [][]int{{1}, {}}, nil},
+		"second definition":              {[]string{"int x = 1;", "int x = 2;"}, "x", 0, [][]int{{}, {}}, []int{1}},
+		"second function definition":     {[]string{"int f(void) { return 1; }", "int f(void) { return 2; }"}, "f", 0, [][]int{{}, {}}, []int{1}},
+		"prototype after its definition": {[]string{"int f(int a) { return a; }", "int f(int);"}, "f", 0, [][]int{{}, {0}}, nil},
+	} {
+		srcs := make([]analysis.Source, len(tc.cells))
+		for i, s := range tc.cells {
+			srcs[i] = analysis.Source{Lang: analysis.C, Source: s}
+		}
+		g := analysis.AnalyzeSources(srcs)
+		var errCells []int
+		for _, e := range g.Errors {
+			errCells = append(errCells, e.Cell)
+			if !strings.Contains(e.Msg, "go-notebook's rule of one definition per name") {
+				t.Errorf("%s: message %q", name, e.Msg)
+			}
+		}
+		if !slices.Equal(errCells, tc.errCells) {
+			t.Errorf("%s: errors %+v", name, g.Errors)
+		}
+		if g.Owner[tc.name] != tc.owner {
+			t.Errorf("%s: %s is owned by cell %d, want %d", name, tc.name, g.Owner[tc.name], tc.owner)
+		}
+		for i, want := range tc.readers {
+			if len(g.Deps[i]) != len(want) || (len(want) > 0 && !slices.Equal(g.Deps[i], want)) {
+				t.Errorf("%s: deps of cell %d are %v, want %v", name, i, g.Deps[i], want)
+			}
+		}
+	}
+	// A prototype defines nothing; a tentative definition defines weakly.
+	if c := analyzeAlone(0, "int f(int);\nint t;"); names(c.Defines) != "t" || names(c.Weak) != "t" || names(c.Uses) != "f" {
+		t.Errorf("%+v", c)
+	}
+}

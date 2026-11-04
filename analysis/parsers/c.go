@@ -41,11 +41,19 @@ func analyzeCCell(index int, src string, state any) (*analysis.Cell, any) {
 	if len(c.Errors) > 0 {
 		return c, state
 	}
+	var declared []string
 	for _, n := range a.Defines {
+		if n.Def == cell.Declaration { // a prototype, an extern: it reads the name
+			declared = append(declared, n.Name)
+			continue
+		}
 		if slices.Contains(c.Defines, n.Name) {
 			continue
 		}
 		c.Defines = append(c.Defines, n.Name)
+		if n.Def == cell.Tentative {
+			c.Weak = append(c.Weak, n.Name)
+		}
 		switch n.Kind {
 		case cell.Variable:
 		case cell.Function:
@@ -55,6 +63,12 @@ func analyzeCCell(index int, src string, state any) (*analysis.Cell, any) {
 		}
 	}
 	c.Uses = append([]string(nil), a.Uses...)
+	for _, name := range declared {
+		if !slices.Contains(c.Uses, name) && !slices.Contains(c.Defines, name) {
+			c.Uses = append(c.Uses, name)
+		}
+	}
+	slices.Sort(c.Uses)
 	return c, ctx.Extend(a)
 }
 

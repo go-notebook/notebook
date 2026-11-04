@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-notebook/notebook/analysis"
 	"github.com/go-notebook/notebook/format"
 	"github.com/go-notebook/notebook/kernel"
 )
@@ -19,8 +20,10 @@ func TestHighlightDispatch(t *testing.T) {
 	if !strings.Contains(goHTML, "&lt;") || highlight("nonesuch", src) != goHTML || highlight("\x00../", src) != goHTML {
 		t.Errorf("unknown language: %q", highlight("nonesuch", src))
 	}
-	if got := highlight("julia", src); got != "x := 1 &lt; 2" {
-		t.Errorf("julia: %q", got)
+	analysis.Register(plainLang{})
+	defer analysis.Unregister("plain")
+	if got := highlight("plain", src); got != "x := 1 &lt; 2" {
+		t.Errorf("a language with no lexer: %q", got)
 	}
 	if highlight("ruby", src) == goHTML && highlight("ruby", "def f; end") == highlight("go", "def f; end") {
 		t.Error("ruby uses the ruby lexer")
@@ -90,14 +93,35 @@ func TestRubyHighlight(t *testing.T) {
 	}
 }
 
-// A Julia cell is shown escaped: go-rouge has no Julia lexer.
-func TestJuliaCellShown(t *testing.T) {
-	nb := format.Parse("```julia\nx = a < b\n```\n")
-	var b strings.Builder
-	if err := HTML(&b, "t", nb, nil); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(b.String(), "x = a &lt; b") {
-		t.Fatalf("not escaped:\n%s", b.String())
+// plainLang is a language with no go-rouge lexer, so it is not a Highlighter.
+type plainLang struct{}
+
+func (plainLang) Name() string { return "plain" }
+func (plainLang) Analyze(string, analysis.Limits) (analysis.Names, []analysis.Diagnostic, error) {
+	return analysis.Names{}, nil, nil
+}
+func (plainLang) Crosses(_, _ *analysis.Cell, _ string) bool { return false }
+func (plainLang) Run() analysis.Run                          { return analysis.Run{Runs: true} }
+
+// A Julia cell and an R cell are highlighted with go-rouge's julia and r
+// lexers (go-rouge v0.8.0): the token classes differ from the Go lexer's, and
+// the source is still escaped.
+func TestJuliaAndRHighlight(t *testing.T) {
+	for _, tc := range []struct{ lang, src string }{
+		{"julia", "function f(x)\n    x < 2 ? \"a\" : :b\nend\n"},
+		{"r", "f <- function(x) {\n  if (x < 2) \"a\" else NULL\n}\n"},
+	} {
+		nb := format.Parse("```" + tc.lang + "\n" + tc.src + "```\n")
+		var b strings.Builder
+		if err := HTML(&b, "t", nb, nil); err != nil {
+			t.Fatal(err)
+		}
+		page := b.String()
+		if !strings.Contains(page, `<span class="k">`) || !strings.Contains(page, "&lt;") || strings.Contains(page, "x < 2") {
+			t.Errorf("%s: not highlighted and escaped:\n%s", tc.lang, page)
+		}
+		if got, plain := highlight(tc.lang, tc.src), highlight("plain-none", tc.src); got == plain {
+			t.Errorf("%s is shown as Go", tc.lang)
+		}
 	}
 }

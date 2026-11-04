@@ -152,7 +152,4 @@ func TestRGraph(t *testing.T) {
 		Shared(&Cell{Lang: Ruby}, g.Cells[0], "w") || !Shared(g.Cells[0], g.Cells[3], "x") || isolated(Go) || isolated("nonesuch") || !isolated(R) {
 		t.Error("an R variable crosses")
 	}
-	if _, ok := Lookup(R).(Highlighter); ok {
-		t.Error("R is a Highlighter, but go-rouge has no R lexer")
-	}
 }

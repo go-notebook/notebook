@@ -131,6 +131,8 @@ A ` ```julia ` block is a Julia cell (v0.6.0 and later). It is parsed with [go-e
 
 No external `julia` is started: execution waits for go-embedded-julia's own lowering and runtime.
 
+In the HTML export, Julia and R cells are highlighted with [go-rouge](https://github.com/go-rouge/rouge)'s `julia` and `r` lexers (go-rouge v0.8.0 and later, transcribed from Rouge v5.1.0); both languages implement `analysis.Highlighter`.
+
 ## R cells
 
 A ` ```r ` block is an R cell (parsed since v0.8.0, run after v0.10.0). R is [go-embedded-r](https://github.com/go-embedded-r/r) (v0.3.0), a pure-Go R: no external `R` is started. Its parser, a port of R 4.6's grammar that gives the same trees and tokens as R 4.6.2 on all of R's own `src/library` and `tests` (932 files), checks the cell; its evaluator runs it.

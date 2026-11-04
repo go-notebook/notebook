@@ -54,20 +54,21 @@ func init() { EnableParsers() }
 // Without analysis/parsers, Julia and R stay registered, with their run
 // capability, and their cells fail with ParserMissing; nothing else changes.
 func TestParserMissing(t *testing.T) {
-	juliaParser, rParser = nil, nil
-	t.Cleanup(EnableParsers)
-	if !slices.Contains(Languages(), Julia) || !slices.Contains(Languages(), R) || RunOf(R).Runs {
+	oldC := cParser
+	juliaParser, rParser, cParser = nil, nil, nil
+	t.Cleanup(func() { EnableParsers(); cParser = oldC })
+	if !slices.Contains(Languages(), Julia) || !slices.Contains(Languages(), R) || !slices.Contains(Languages(), C) || RunOf(R).Runs || RunOf(C).Runs {
 		t.Fatalf("languages %v", Languages())
 	}
-	g := AnalyzeSources([]Source{{Lang: Julia, Source: "x = 1"}, {Lang: R, Source: "y <- 1"}, {Lang: Go, Source: "z := 1"}})
-	for i, lang := range []string{"Julia", "R"} {
+	g := AnalyzeSources([]Source{{Lang: Julia, Source: "x = 1"}, {Lang: R, Source: "y <- 1"}, {Lang: C, Source: "int w;"}, {Lang: Go, Source: "z := 1"}})
+	for i, lang := range []string{"Julia", "R", "C"} {
 		c := g.Cells[i]
 		if len(c.Errors) != 1 || c.Errors[0].Msg != ParserMissing(lang) || c.Errors[0].Cell != i || len(c.Defines) != 0 {
 			t.Errorf("%s cell %+v", lang, c)
 		}
 	}
-	if len(g.Cells[2].Errors) != 0 || !slices.Equal(g.Cells[2].Defines, []string{"z"}) {
-		t.Errorf("Go cell %+v", g.Cells[2])
+	if len(g.Cells[3].Errors) != 0 || !slices.Equal(g.Cells[3].Defines, []string{"z"}) {
+		t.Errorf("Go cell %+v", g.Cells[3])
 	}
 	if ParserMissing("R") != "this program has no R parser: it must import github.com/go-notebook/notebook/analysis/parsers" {
 		t.Error(ParserMissing("R"))
@@ -81,10 +82,10 @@ func register(t *testing.T, l Language) {
 }
 
 func TestRegistry(t *testing.T) {
-	if got := Languages(); !reflect.DeepEqual(got, []string{"go", "julia", "r", "ruby"}) {
+	if got := Languages(); !reflect.DeepEqual(got, []string{"c", "go", "julia", "r", "ruby"}) {
 		t.Fatalf("Languages = %v", got)
 	}
-	for _, n := range []string{"go", "ruby", "julia", "r", ""} {
+	for _, n := range []string{"go", "ruby", "julia", "r", "c", ""} {
 		if Lookup(n) == nil {
 			t.Errorf("Lookup(%q) = nil", n)
 		}
@@ -92,13 +93,13 @@ func TestRegistry(t *testing.T) {
 	if Lookup("").Name() != "go" {
 		t.Error(`"" is not Go`)
 	}
-	for _, n := range []string{"R", "c", "Go", "go ", "rb\x00", strings.Repeat("x", 1<<16), "\xff\xfe", "../etc", "ruby,julia"} {
+	for _, n := range []string{"R", "C", "Go", "go ", "rb\x00", strings.Repeat("x", 1<<16), "\xff\xfe", "../etc", "ruby,julia"} {
 		if Lookup(n) != nil {
 			t.Errorf("Lookup(%q) found a language", n)
 		}
 	}
 	register(t, fakeLang{name: "fake"})
-	if Lookup("fake") == nil || len(Languages()) != 5 {
+	if Lookup("fake") == nil || len(Languages()) != 6 {
 		t.Error("fake not registered")
 	}
 	mustPanic(t, "duplicate", func() { Register(fakeLang{name: "fake"}) })
@@ -148,7 +149,7 @@ func TestCapabilities(t *testing.T) {
 	if m := Lookup("ruby").(Runtime).Runtime(); m.Path != RubyPath || m.Module != RubyModule || m.Version != DefaultRubyVersion {
 		t.Errorf("module %+v", m)
 	}
-	for lang, lexer := range map[string]string{"go": "go", "ruby": "ruby"} {
+	for lang, lexer := range map[string]string{"go": "go", "ruby": "ruby", "c": "c"} {
 		if h, ok := Lookup(lang).(Highlighter); !ok || h.Lexer() != lexer {
 			t.Errorf("%s lexer", lang)
 		}
@@ -221,6 +222,88 @@ func TestCrossingRuleIsTheOwners(t *testing.T) {
 	}
 }
 
+// seqLang is a fake Sequential language: each cell's state is the list of the
+// names defined by the cells before it. A line is "def NAME", "use NAME" (an
+// error unless an earlier cell defined NAME) or "bad" (an error).
+type seqLang struct {
+	fakeLang
+	begun *int
+}
+
+func (s seqLang) Begin() any {
+	*s.begun++
+	return []string{}
+}
+
+func (s seqLang) AnalyzeNext(state any, index int, src string) (*Cell, any) {
+	known := state.([]string)
+	c := &Cell{Index: index, Source: src, Lang: s.name, Imports: map[string]string{}}
+	next := slices.Clone(known)
+	for _, line := range strings.Split(src, "\n") {
+		verb, arg, _ := strings.Cut(line, " ")
+		switch verb {
+		case "def":
+			c.Defines = append(c.Defines, arg)
+			next = append(next, arg)
+		case "use":
+			if !slices.Contains(known, arg) {
+				c.Errors = append(c.Errors, Error{Cell: index, Msg: arg + " is not defined"})
+			}
+			c.Uses = append(c.Uses, arg)
+		case "bad":
+			c.Errors = append(c.Errors, Error{Cell: index, Msg: "bad line"})
+		}
+	}
+	if len(c.Errors) > 0 {
+		return c, state // an error extends nothing
+	}
+	return c, next
+}
+
+// The graph threads a Sequential language's state through its cells, in
+// notebook order, one state per language; the other languages are untouched.
+func TestSequentialLanguage(t *testing.T) {
+	var begun, otherBegun int
+	register(t, seqLang{fakeLang: fakeLang{name: "seq"}, begun: &begun})
+	register(t, seqLang{fakeLang: fakeLang{name: "seq2"}, begun: &otherBegun})
+	g := AnalyzeSources([]Source{
+		{Lang: "seq", Source: "use a"}, // nothing defined yet
+		{Lang: "seq", Source: "def a"},
+		{Lang: Go, Source: "x := 1"},
+		{Lang: "seq", Source: "use a\ndef b"}, // sees a
+		{Lang: "seq2", Source: "use a"},       // its own state: not a
+		{Lang: "seq", Source: "def c\nbad"},   // an error: c is not kept
+		{Lang: "seq", Source: "use c"},
+		{Lang: "seq", Source: "use b"},
+	})
+	var failed []int
+	for _, e := range g.Errors {
+		failed = append(failed, e.Cell)
+	}
+	if !slices.Equal(failed, []int{0, 4, 5, 6}) {
+		t.Errorf("errors %+v", g.Errors)
+	}
+	if begun != 1 || otherBegun != 1 {
+		t.Errorf("Begin called %d and %d times, want once per language", begun, otherBegun)
+	}
+	if !slices.Equal(g.Deps[3], []int{1}) || !slices.Equal(g.Deps[7], []int{3}) {
+		t.Errorf("deps %v", g.Deps)
+	}
+	if g.Cells[2].Lang != Go || len(g.Cells[2].Errors) != 0 {
+		t.Errorf("Go cell %+v", g.Cells[2])
+	}
+	// A cell too big is refused without a call, and extends nothing.
+	huge := strings.Repeat(" ", DefaultLimits.MaxBytes+1)
+	g = AnalyzeSources([]Source{{Lang: "seq", Source: "def a"}, {Lang: "seq", Source: huge}, {Lang: "seq", Source: "use a"}})
+	if len(g.Errors) != 1 || g.Errors[0].Cell != 1 || !strings.Contains(g.Errors[0].Msg, "limit") {
+		t.Errorf("huge: %+v", g.Errors)
+	}
+	// One cell at a time (analyzeIn) starts from Begin.
+	if c := analyzeIn("seq", 0, "use a"); len(c.Errors) != 1 {
+		t.Errorf("alone: %+v", c)
+	}
+}
+
 func TestUnknownLanguageIsAnalysedAsGo(t *testing.T) {
 	g := AnalyzeSources([]Source{{Lang: "nonesuch", Source: "x := 1"}, {Source: "y := x"}})
 	if g.Cells[0].Lang != Go || !reflect.DeepEqual(g.Deps[1], []int{0}) {
@@ -230,7 +313,7 @@ func TestUnknownLanguageIsAnalysedAsGo(t *testing.T) {
 
 func TestSizeLimit(t *testing.T) {
 	huge := strings.Repeat(" ", DefaultLimits.MaxBytes+1)
-	for _, lang := range []string{Go, Ruby, Julia, "nonesuch"} {
+	for _, lang := range []string{Go, Ruby, Julia, C, "nonesuch"} {
 		g := AnalyzeSources([]Source{{Lang: lang, Source: huge}})
 		if len(g.Errors) != 1 || !strings.Contains(g.Errors[0].Msg, "limit") {
 			t.Errorf("%s: %v", lang, g.Errors)

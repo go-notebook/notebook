@@ -41,16 +41,24 @@ func Analyze(sources []string) *Graph {
 // defines and the reverse, and the graph orders them together.
 func AnalyzeSources(sources []Source) *Graph {
 	g := &Graph{Owner: map[string]int{}}
+	states := map[string]any{} // of the Sequential languages
 	for i, s := range sources {
-		c := analyzeIn(s.Lang, i, s.Source)
+		c := analyzeSeq(states, s.Lang, i, s.Source)
 		g.Cells = append(g.Cells, c)
 		g.Errors = append(g.Errors, c.Errors...)
 	}
 	for _, c := range g.Cells {
 		for _, name := range c.Defines {
 			if prev, dup := g.Owner[name]; dup {
-				g.Errors = append(g.Errors, Error{Cell: c.Index, Pos: 0,
-					Msg: fmt.Sprintf("%s is already defined by cell %d; each name is defined by one cell", name, prev)})
+				weak, prevWeak := contains(c.Weak, name), contains(g.Cells[prev].Weak, name)
+				switch {
+				case weak: // neither an owner nor an error
+				case prevWeak: // a definition for good wins over a provisional one
+					g.Owner[name] = c.Index
+				default:
+					g.Errors = append(g.Errors, Error{Cell: c.Index, Pos: 0,
+						Msg: fmt.Sprintf("%s is already defined by cell %d; each name is defined by one cell (this is go-notebook's rule of one definition per name, whatever the language allows)", name, prev)})
+				}
 				continue
 			}
 			g.Owner[name] = c.Index

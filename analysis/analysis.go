@@ -65,6 +65,12 @@ type Cell struct {
 	// Consts are the constants, classes and modules a Ruby cell defines.
 	Consts []string
 
+	// Weak lists the names in Defines that the cell defines only provisionally
+	// (a C tentative definition, `int x;`): the graph gives such a name to the
+	// first cell that has it, unless a later cell defines it for good, and a
+	// further weak definition is neither an owner nor an error.
+	Weak []string
+
 	// RubyDisplay reports that a Ruby cell ends in an expression, whose value
 	// it shows. (A Go cell's is Display.)
 	RubyDisplay bool

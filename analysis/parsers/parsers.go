@@ -1,6 +1,6 @@
 // Package parsers links the parsers of go-notebook's check-only cell
 // languages (go-embedded-julia's for ```julia cells, go-embedded-r's for
-// ```r cells) into a program. Import it for its side effect:
+// ```r cells, go-embedded-c's for ```c cells) into a program. Import it for its side effect:
 //
 //	import _ "github.com/go-notebook/notebook/analysis/parsers"
 //
@@ -12,4 +12,7 @@ package parsers
 
 import "github.com/go-notebook/notebook/analysis"
 
-func init() { analysis.EnableParsers() }
+func init() {
+	analysis.EnableParsers()
+	analysis.SetCParser(analyzeCCell)
+}

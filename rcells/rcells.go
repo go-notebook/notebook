@@ -46,15 +46,23 @@ var parseLimits = syntax.Limits{MaxBytes: 4 << 20, MaxDepth: 1000, MaxNodes: 1 <
 // environment (runtime.RLimitsEnv), or runtime.DefaultRLimits.
 func New() *Session { return NewWith(runtime.ParseRLimits(os.Getenv(runtime.RLimitsEnv))) }
 
-// NewWith makes a session with the given limits, where zero is no bound.
+// NewWith makes a session with the given limits, where a zero field is
+// runtime.DefaultRLimits' value and runtime.Unbounded (-1), which is
+// eval.Unbounded, is no bound: NewWith(runtime.RLimits{}) is bounded.
 func NewWith(l runtime.RLimits) *Session {
-	return &Session{l: l, s: eval.NewSession(eval.Options{
+	l = l.Resolve()
+	return &Session{l: l, s: eval.NewSession(newOptions(l))}
+}
+
+// newOptions are the options of a session with limits that are resolved.
+func newOptions(l runtime.RLimits) eval.Options {
+	return eval.Options{
 		MaxVector: maxVector,
 		MaxAlloc:  l.MaxAlloc,
 		MaxSteps:  l.MaxSteps,
 		Timeout:   l.Timeout,
 		Parse:     parseLimits,
-	})}
+	}
 }
 
 // Run evaluates a cell. What it prints goes to the worker's standard output,

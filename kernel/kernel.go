@@ -83,10 +83,9 @@ type Options struct {
 	CellMemory int64
 
 	// R bounds what one R cell may use: the bytes of vectors it allocates in
-	// total, the calls it evaluates and its time. go-embedded-r bounds none of
-	// them unless told to, so a zero field is runtime.DefaultRLimits' value
-	// (512 MiB, 50 million calls, 30 s), not no bound; a negative one is no
-	// bound. A cell that goes over fails with R's own error or, for the time,
+	// total, the steps (calls and loop iterations) it evaluates and its time.
+	// A zero field is runtime.DefaultRLimits' value (512 MiB, 50 million steps,
+	// 30 s), never no bound; a negative one (runtime.Unbounded, -1) is no bound. A cell that goes over fails with R's own error or, for the time,
 	// "stopped"; the notebook's R session, and its variables, are kept.
 	// CellTimeout and CellMemory apply to R cells as to the others.
 	R runtime.RLimits

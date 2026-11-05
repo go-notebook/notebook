@@ -136,7 +136,7 @@ func TestLimits(t *testing.T) {
 			"Error: memory limit exceeded: more than 67108864 bytes of vectors allocated"},
 		{"allocation, in a loop that grows a vector", runtime.RLimits{MaxAlloc: 8 << 20}, "x <- NULL\nfor (i in 1:100000) x <- c(x, i)",
 			"Error: memory limit exceeded: more than 8388608 bytes of vectors allocated"},
-		{"vector length", sloppy, "x <- numeric(2^27)", "Error in numeric(2^27) : cannot allocate vector of length 134217728"},
+		{"vector length", sloppy, "x <- numeric(2^27)", "Error in numeric(2^27) : cannot allocate vector of length 67108865"},
 		{"depth", sloppy, "f <- function(n) f(n + 1)\nf(1)",
 			"Error: evaluation nested too deeply: infinite recursion / options(expressions=)?"},
 	} {
@@ -157,8 +157,60 @@ func TestLimits(t *testing.T) {
 	}
 }
 
+// A zero RLimits is bounded, as DefaultRLimits: the cell ends on a limit.
+func TestZeroIsBounded(t *testing.T) {
+	s := NewWith(runtime.RLimits{})
+	if s.l != runtime.DefaultRLimits {
+		t.Errorf("limits %+v, want %+v", s.l, runtime.DefaultRLimits)
+	}
+	if r := run(t, s, "while(TRUE) 0"); r.failure != "Error: evaluation step limit reached" {
+		t.Errorf("%+v", r)
+	}
+}
+
+// -1 is eval.Unbounded, field by field: the options carry it, and a cell runs
+// past what the zero field (the default) allows.
+func TestUnbounded(t *testing.T) {
+	if runtime.Unbounded != eval.Unbounded {
+		t.Fatalf("runtime.Unbounded %d, eval.Unbounded %d", runtime.Unbounded, eval.Unbounded)
+	}
+	u := newOptions(runtime.RLimits{MaxAlloc: -1, MaxSteps: -1, Timeout: -1}.Resolve())
+	if u.MaxAlloc != eval.Unbounded || u.MaxSteps != eval.Unbounded || u.Timeout != eval.Unbounded {
+		t.Errorf("options %+v", u)
+	}
+	d := newOptions(runtime.RLimits{}.Resolve())
+	if d.MaxAlloc != runtime.DefaultRLimits.MaxAlloc || d.MaxSteps != runtime.DefaultRLimits.MaxSteps || d.Timeout != runtime.DefaultRLimits.Timeout {
+		t.Errorf("default options %+v", d)
+	}
+	for _, tc := range []struct {
+		name string
+		l    runtime.RLimits // the field under test is zero in bounded, -1 in unbounded
+		src  string
+		want string // the failure of the bounded session
+	}{
+		// No steps case: running past 50 million steps takes over the 30 s
+		// default timeout on CI's runners under -race. The options above show
+		// that -1 reaches eval as eval.Unbounded, and TestZeroIsBounded that
+		// the default steps limit stops a cell.
+		// 20 vectors of 32 MB: 640 MB, over the default 512 MiB.
+		{"alloc", runtime.RLimits{MaxAlloc: -1}, "for (i in 1:20) numeric(4e6)",
+			"Error: memory limit exceeded: more than 536870912 bytes of vectors allocated"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if r := run(t, NewWith(tc.l), tc.src); r.failure != "" {
+				t.Errorf("unbounded: %+v", r)
+			}
+			zero := tc.l
+			zero.MaxSteps, zero.MaxAlloc = 0, 0
+			if r := run(t, NewWith(zero), tc.src); r.failure != tc.want {
+				t.Errorf("default: %q, want %q", r.failure, tc.want)
+			}
+		})
+	}
+}
+
 func TestContext(t *testing.T) {
-	s := NewWith(runtime.RLimits{MaxSteps: 1 << 30})
+	s := NewWith(runtime.RLimits{MaxSteps: 1 << 30, Timeout: runtime.Unbounded})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if r := runCtx(t, ctx, s, "while(TRUE) 0"); r.failure != "stopped: the R cell was cancelled" {
@@ -205,7 +257,7 @@ func TestWarningText(t *testing.T) {
 func TestNew(t *testing.T) {
 	t.Setenv(runtime.RLimitsEnv, "0,5000,0")
 	s := New()
-	if s.l != (runtime.RLimits{MaxSteps: 5000}) {
+	if s.l != (runtime.RLimits{MaxSteps: 5000}).Resolve() {
 		t.Errorf("limits %+v", s.l)
 	}
 	if r := run(t, s, "while(TRUE) 0"); r.failure != "Error: evaluation step limit reached" {

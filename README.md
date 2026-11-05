@@ -135,7 +135,7 @@ In the HTML export, Julia and R cells are highlighted with [go-rouge](https://gi
 
 ## R cells
 
-A ` ```r ` block is an R cell (parsed since v0.8.0, run after v0.10.0). R is [go-embedded-r](https://github.com/go-embedded-r/r) (v0.3.0), a pure-Go R: no external `R` is started. Its parser, a port of R 4.6's grammar that gives the same trees and tokens as R 4.6.2 on all of R's own `src/library` and `tests` (932 files), checks the cell; its evaluator runs it.
+A ` ```r ` block is an R cell (parsed since v0.8.0, run after v0.10.0). R is [go-embedded-r](https://github.com/go-embedded-r/r) (v0.4.0), a pure-Go R: no external `R` is started. Its parser, a port of R 4.6's grammar that gives the same trees and tokens as R 4.6.2 on all of R's own `src/library` and `tests` (932 files), checks the cell; its evaluator runs it.
 
 ```r
 xs <- c(2.1, 3.4, 1.9, 5.6)
@@ -148,12 +148,12 @@ total / length(xs)
 - **Syntax errors** are reported at the notebook's line and column, with R's own message (`5:8: cell 0: syntax error: unexpected symbol`).
 - **Names** follow R's scoping at the top level: `x <- v`, `x = v`, `v -> x`, `assign("x", v)`, `x$a <- v`, `names(x) <- v` and a top-level `for` variable define; the free variables of the cell and of its functions' bodies are read. A cell whose names cannot be known from its text (`<<-`, `eval`, `assign`/`get` with a computed name, `attach`, `library`, `source`) is **dynamic**: it depends on every earlier cell, and every later cell that reads a name depends on it.
 - **R variables stay in R.** They are not shared with Go, Ruby, Julia or C cells in either direction yet: a Go cell that reads an R name finds it undefined, and an R cell does not see a Go variable (`analysis.Isolated`). A cell shows text only, no figure.
-- **Limits.** go-embedded-r bounds only the depth of an evaluation and the length of a vector unless told to, and a notebook may come from anyone, so the kernel always bounds each R cell (`kernel.Options.R`; a zero field is the default, a negative one no bound):
+- **Limits.** go-embedded-r (since v0.4.0) bounds every evaluation by default, and a notebook may come from anyone, so the kernel gives each R cell its own bounds (`kernel.Options.R`; a zero field is the default, `-1` is no bound):
 
   | Limit | Default | Ends a cell with |
   |---|---|---|
   | allocation, `MaxAlloc` | 512 MiB of vectors in total over the cell, garbage included | `Error: memory limit exceeded: more than 536870912 bytes of vectors allocated` |
-  | calls, `MaxSteps` | 50 million (12 to 16 million iterations of `s <- s + i`) | `Error: evaluation step limit reached` |
+  | calls and loop iterations, `MaxSteps` | 50 million (16.6 million iterations of `for (i in 1:n) s <- s + i`, 12.5 million of the same in a `while`) | `Error: evaluation step limit reached` |
   | time, `Timeout` | 30 s | `stopped: the R cell ran longer than 30s, the limit` |
   | depth, vector length | R's 5000 evaluations; 2^26 elements | `Error: evaluation nested too deeply: …`; `Error in numeric(2^27) : cannot allocate vector of length 134217728` |
 

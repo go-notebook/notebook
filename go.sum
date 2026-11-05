@@ -11,8 +11,8 @@ github.com/go-opentype/opentype v0.16.1 h1:Hu2RKinqbd/WVSpRz6VrdKUPZUwPTZ4F9yx2H
 github.com/go-opentype/opentype v0.16.1/go.mod h1:aSxaPkjDzEnSAYB47s0oaHHa/sDViwW+aPlOz1A3dEg=
 github.com/go-regexp/engine v0.3.2 h1:zublnb1Vf5Cclh59+cp35htv2aATddBMNp5VwMAeZcc=
 github.com/go-regexp/engine v0.3.2/go.mod h1:fWnPvSuE4HIVpBQIHMiaPMEE7InDc00KeoPr/QNFGwA=
-github.com/go-rouge/rouge v0.7.1 h1:I+Elxms+w0efBu+JL1LrzhcMQWw8+89Czis9msnS01c=
-github.com/go-rouge/rouge v0.7.1/go.mod h1:R3jg4M5ltZUCc19bfAd8burX7zozHyynjS4oDmlNtUM=
+github.com/go-rouge/rouge v0.8.1 h1:m0s2HbGikvjpXL+2mN3Yg7gL1iGzzOKzct/1YXoMdy8=
+github.com/go-rouge/rouge v0.8.1/go.mod h1:R3jg4M5ltZUCc19bfAd8burX7zozHyynjS4oDmlNtUM=
 github.com/go-ruby-irb/irb v0.1.0 h1:JUwMlIbmi0loFveyajSgW2i4+X1sgT+XJraTXYn4ipM=
 github.com/go-ruby-irb/irb v0.1.0/go.mod h1:W5GkYHjTRl47jO1xh434orsyEtPFy49GZBLGfXJT0Ys=
 github.com/go-ruby-parser/parser v0.13.1 h1:gq7QVT7KdRp7nZt1UHsa73YDo77qrD8kGdQY/GVEA6g=

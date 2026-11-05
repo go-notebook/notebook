@@ -307,14 +307,19 @@ func (rubyLang) Runtime() Module {
 	return Module{Path: RubyPath, Module: RubyModule, Version: DefaultRubyVersion}
 }
 
-// juliaLang: go-rouge has no Julia lexer, so it is not a Highlighter.
+// juliaLang is highlighted with go-rouge's julia lexer (go-rouge v0.8.0, from
+// Rouge v5.1.0).
 type juliaLang struct{ localsLang }
+
+func (juliaLang) Lexer() string { return "julia" }
 
 // rLang: R cells run in one R session of the worker, which holds their
 // variables, so they share them with the other R cells and with no cell of
-// another language (Isolated); go-rouge has no R lexer, so it is not a
-// Highlighter.
+// another language (Isolated). They are highlighted with go-rouge's r lexer
+// (go-rouge v0.8.0, from Rouge v5.1.0).
 type rLang struct{ builtinLang }
+
+func (rLang) Lexer() string { return "r" }
 
 func (rLang) Crosses(_, _ *Cell, _ string) bool { return false }
 

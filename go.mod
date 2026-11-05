@@ -6,7 +6,7 @@ require (
 	github.com/go-embedded-c/c v0.2.0
 	github.com/go-embedded-julia/julia v0.5.0
 	github.com/go-embedded-r/r v0.3.0
-	github.com/go-rouge/rouge v0.7.1
+	github.com/go-rouge/rouge v0.8.1
 	github.com/go-ruby-irb/irb v0.1.0
 	github.com/go-ruby-parser/parser v0.13.1
 	github.com/go-ruby-reline/reline v0.1.0

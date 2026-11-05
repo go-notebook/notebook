@@ -149,13 +149,10 @@ func TestCapabilities(t *testing.T) {
 	if m := Lookup("ruby").(Runtime).Runtime(); m.Path != RubyPath || m.Module != RubyModule || m.Version != DefaultRubyVersion {
 		t.Errorf("module %+v", m)
 	}
-	for lang, lexer := range map[string]string{"go": "go", "ruby": "ruby", "c": "c"} {
+	for lang, lexer := range map[string]string{"go": "go", "ruby": "ruby", "c": "c", "julia": "julia", "r": "r"} {
 		if h, ok := Lookup(lang).(Highlighter); !ok || h.Lexer() != lexer {
 			t.Errorf("%s lexer", lang)
 		}
-	}
-	if _, ok := Lookup("julia").(Highlighter); ok {
-		t.Error("Julia has no lexer")
 	}
 }
 

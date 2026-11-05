@@ -188,9 +188,10 @@ func TestUnbounded(t *testing.T) {
 		src  string
 		want string // the failure of the bounded session
 	}{
-		// 3 steps an iteration: 60 million, over the default 50 million.
-		{"steps", runtime.RLimits{MaxSteps: -1}, "s <- 0\nfor (i in 1:2e7) s <- s + i",
-			"Error: evaluation step limit reached"},
+		// No steps case: running past 50 million steps takes over the 30 s
+		// default timeout on CI's runners under -race. The options above show
+		// that -1 reaches eval as eval.Unbounded, and TestZeroIsBounded that
+		// the default steps limit stops a cell.
 		// 20 vectors of 32 MB: 640 MB, over the default 512 MiB.
 		{"alloc", runtime.RLimits{MaxAlloc: -1}, "for (i in 1:20) numeric(4e6)",
 			"Error: memory limit exceeded: more than 536870912 bytes of vectors allocated"},

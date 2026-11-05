@@ -5,8 +5,8 @@ github.com/go-embedded-c/c v0.2.0 h1:8Am4xrsvyfA7zx2MP9Ey0ZWMwfMo2erWr73b/4RH7VY
 github.com/go-embedded-c/c v0.2.0/go.mod h1:MhuXRqUtTZTUnm/3fVjho1HiL6QCFylChzOQ+Tu9eiQ=
 github.com/go-embedded-julia/julia v0.5.0 h1:yLdnc0M+qycG8lbkDyH58RYushqdMOp2xdrIZpaIcBo=
 github.com/go-embedded-julia/julia v0.5.0/go.mod h1:f8anO/Ngw/UB/9Fj/k9qX/F8LRgh90Bp1VaJ2SQsGgw=
-github.com/go-embedded-r/r v0.3.0 h1:hCluPkeGOH0RLpkHRzPaOBK9/mtaBE9e4DDB13Pqn0I=
-github.com/go-embedded-r/r v0.3.0/go.mod h1:ac1Px4RIxnrBB88WLetKff8ZDkurBTXwPoh/YteYmKg=
+github.com/go-embedded-r/r v0.4.0 h1:0xqgHgnokpV+1hrwEsh+M2XDXKuT+a/LHtQvnosspTc=
+github.com/go-embedded-r/r v0.4.0/go.mod h1:ac1Px4RIxnrBB88WLetKff8ZDkurBTXwPoh/YteYmKg=
 github.com/go-opentype/opentype v0.16.1 h1:Hu2RKinqbd/WVSpRz6VrdKUPZUwPTZ4F9yx2HjZ5oCI=
 github.com/go-opentype/opentype v0.16.1/go.mod h1:aSxaPkjDzEnSAYB47s0oaHHa/sDViwW+aPlOz1A3dEg=
 github.com/go-regexp/engine v0.3.2 h1:zublnb1Vf5Cclh59+cp35htv2aATddBMNp5VwMAeZcc=

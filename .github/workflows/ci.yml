@@ -57,6 +57,15 @@ jobs:
           go-version: '1.27.3'
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      # The allocation bomb of an R cell is run by itself, in a binary built
+      # first, with the Go heap limited by GOMEMLIMIT and the process's address
+      # space by ulimit -v: a failure to refuse it (rcells.TestAllocBomb) must
+      # end in a test failure or an out-of-memory error of this step, never in
+      # the runner's. The test also asserts the heap it reached.
+      - name: R cells' bombs under GOMEMLIMIT and ulimit -v
+        run: |
+          go test -c -o "$RUNNER_TEMP/rcells.test" ./rcells
+          ( ulimit -v 4194304; GOMEMLIMIT=1GiB "$RUNNER_TEMP/rcells.test" -test.run 'TestAllocBomb|TestLimits' -test.count=1 -test.v )
       - name: Fuzz the notebook format for 60 s
         run: go test -run '^$' -fuzz FuzzRoundTrip -fuzztime 60s ./format
       - name: Fuzz the analysis of Ruby cells for 60 s

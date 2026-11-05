@@ -51,13 +51,13 @@ func (f fakeLang) Analyze(src string, lim Limits) (Names, []Diagnostic, error) {
 // analysis/parsers does; TestParserMissing takes the parsers away.
 func init() { EnableParsers() }
 
-// Without analysis/parsers, Julia and R stay registered, with their run
-// capability, and their cells fail with ParserMissing; nothing else changes.
+// Without analysis/parsers, Julia, R and C stay registered, with their run
+// capability (R runs, Julia and C do not yet), and their cells fail with ParserMissing; nothing else changes.
 func TestParserMissing(t *testing.T) {
 	oldC := cParser
 	juliaParser, rParser, cParser = nil, nil, nil
 	t.Cleanup(func() { EnableParsers(); cParser = oldC })
-	if !slices.Contains(Languages(), Julia) || !slices.Contains(Languages(), R) || !slices.Contains(Languages(), C) || RunOf(R).Runs || RunOf(C).Runs {
+	if !slices.Contains(Languages(), Julia) || !slices.Contains(Languages(), R) || !slices.Contains(Languages(), C) || !RunOf(R).Runs || RunOf(C).Runs {
 		t.Fatalf("languages %v", Languages())
 	}
 	g := AnalyzeSources([]Source{{Lang: Julia, Source: "x = 1"}, {Lang: R, Source: "y <- 1"}, {Lang: C, Source: "int w;"}, {Lang: Go, Source: "z := 1"}})

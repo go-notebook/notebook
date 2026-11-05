@@ -34,6 +34,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -80,6 +81,15 @@ type Options struct {
 	// Go garbage collector keeps under it as long as it can; a cell that
 	// holds more has its worker stopped and fails. Zero means no bound.
 	CellMemory int64
+
+	// R bounds what one R cell may use: the bytes of vectors it allocates in
+	// total, the calls it evaluates and its time. go-embedded-r bounds none of
+	// them unless told to, so a zero field is runtime.DefaultRLimits' value
+	// (512 MiB, 50 million calls, 30 s), not no bound; a negative one is no
+	// bound. A cell that goes over fails with R's own error or, for the time,
+	// "stopped"; the notebook's R session, and its variables, are kept.
+	// CellTimeout and CellMemory apply to R cells as to the others.
+	R runtime.RLimits
 }
 
 // Result is the outcome of one code cell.
@@ -531,8 +541,12 @@ func (k *Kernel) start() error {
 	cmd := exec.Command(k.binary())
 	cmd.Dir = k.opt.Dir
 	cmd.Stderr = os.Stderr
+	cmd.Env = os.Environ()
 	if k.opt.CellMemory > 0 {
-		cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", runtime.MemoryEnv, k.opt.CellMemory))
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%d", runtime.MemoryEnv, k.opt.CellMemory))
+	}
+	if slices.Contains(k.langs, analysis.R) {
+		cmd.Env = append(cmd.Env, k.opt.R.Env())
 	}
 	// The pipes fail only when Stdin or Stdout is already set.
 	in, _ := cmd.StdinPipe()

@@ -4,15 +4,15 @@ go 1.27.2
 
 require (
 	github.com/go-embedded-c/c v0.2.0
-	github.com/go-embedded-julia/julia v0.5.0
-	github.com/go-embedded-r/r v0.4.0
+	github.com/go-embedded-julia/julia v0.12.0
+	github.com/go-embedded-r/r v0.6.0
 	github.com/go-rouge/rouge v0.8.1
 	github.com/go-ruby-irb/irb v0.1.0
-	github.com/go-ruby-parser/parser v0.13.1
+	github.com/go-ruby-parser/parser v0.14.0
 	github.com/go-ruby-reline/reline v0.1.0
 	github.com/go-tex/math v0.50.0
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.10
+	github.com/spf13/pflag v1.1.0
 	github.com/yuin/goldmark v1.8.7
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
@@ -21,6 +21,7 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.7 // indirect
+	github.com/go-embedded-r/tre v0.1.0 // indirect
 	github.com/go-opentype/opentype v0.16.1 // indirect
 	github.com/go-regexp/engine v0.3.2 // indirect
 	github.com/go-ruby-regexp/regexp v0.1.1 // indirect

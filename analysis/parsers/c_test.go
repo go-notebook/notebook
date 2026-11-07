@@ -97,8 +97,32 @@ func TestCExpansionBomb(t *testing.T) {
 		if len(c.Errors) == 0 || !strings.Contains(c.Errors[0].Msg, "macro expansion exceeds") || len(c.Defines) != 0 {
 			t.Errorf("not refused: %+v", c.Errors)
 		}
-	case <-time.After(30 * time.Second):
-		t.Fatal("the expansion bomb was not refused in 30 s")
+	// The refusal is the assertion; the clock only stops a hang. Natively it
+	// takes 0.43 s; under qemu riscv64 in CI it took over 30 s (#40, #42).
+	case <-time.After(5 * time.Minute):
+		t.Fatal("the expansion bomb was not refused in 5 min")
+	}
+}
+
+// The invalid inputs go-embedded-c v0.2.1 fixed in its own front end (its
+// FuzzSource corpus, c#15): hangs and panics on a few bytes. A notebook may
+// come from anyone, so analysing one must end, with an error. Through the cell
+// package they already ended on v0.2.0; this keeps it so.
+func TestCShortCellsEnd(t *testing.T) {
+	for _, src := range []string{
+		"^", "\"\"\\", "0\n\\", "\"(0!0!\xd2\\", "0={#,", "#define M##\nM",
+		"\"abc", "'a",
+	} {
+		done := make(chan *analysis.Cell, 1)
+		go func() { done <- analyzeAlone(0, src) }()
+		select {
+		case c := <-done:
+			if len(c.Errors) == 0 || len(c.Defines) != 0 {
+				t.Errorf("%q: %+v", src, c)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("%q: the C front end did not return in 10 s", src)
+		}
 	}
 }
 

@@ -97,8 +97,10 @@ func TestCExpansionBomb(t *testing.T) {
 		if len(c.Errors) == 0 || !strings.Contains(c.Errors[0].Msg, "macro expansion exceeds") || len(c.Defines) != 0 {
 			t.Errorf("not refused: %+v", c.Errors)
 		}
-	case <-time.After(30 * time.Second):
-		t.Fatal("the expansion bomb was not refused in 30 s")
+	// The refusal is the assertion; the clock only stops a hang. Natively it
+	// takes 0.43 s; under qemu riscv64 in CI it took over 30 s (#40, #42).
+	case <-time.After(5 * time.Minute):
+		t.Fatal("the expansion bomb was not refused in 5 min")
 	}
 }
 

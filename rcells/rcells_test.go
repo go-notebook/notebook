@@ -157,14 +157,19 @@ func TestLimits(t *testing.T) {
 	}
 }
 
-// A zero RLimits is bounded, as DefaultRLimits: the cell ends on a limit.
+// A zero RLimits is bounded, as DefaultRLimits. Running a cell to the default
+// 50 million steps takes over the 30 s timeout on CI's macOS under -race and
+// coverage, so the test checks that the session and its eval options carry a
+// positive bound for every field; "steps" in TestLimits shows a step limit
+// ends a cell.
 func TestZeroIsBounded(t *testing.T) {
 	s := NewWith(runtime.RLimits{})
 	if s.l != runtime.DefaultRLimits {
 		t.Errorf("limits %+v, want %+v", s.l, runtime.DefaultRLimits)
 	}
-	if r := run(t, s, "while(TRUE) 0"); r.failure != "Error: evaluation step limit reached" {
-		t.Errorf("%+v", r)
+	o := newOptions(s.l)
+	if o.MaxSteps <= 0 || o.MaxAlloc <= 0 || o.Timeout <= 0 {
+		t.Errorf("options %+v: a zero RLimits must give positive bounds", o)
 	}
 }
 

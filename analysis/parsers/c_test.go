@@ -102,6 +102,28 @@ func TestCExpansionBomb(t *testing.T) {
 	}
 }
 
+// The invalid inputs go-embedded-c v0.2.1 fixed in its own front end (its
+// FuzzSource corpus, c#15): hangs and panics on a few bytes. A notebook may
+// come from anyone, so analysing one must end, with an error. Through the cell
+// package they already ended on v0.2.0; this keeps it so.
+func TestCShortCellsEnd(t *testing.T) {
+	for _, src := range []string{
+		"^", "\"\"\\", "0\n\\", "\"(0!0!\xd2\\", "0={#,", "#define M##\nM",
+		"\"abc", "'a",
+	} {
+		done := make(chan *analysis.Cell, 1)
+		go func() { done <- analyzeAlone(0, src) }()
+		select {
+		case c := <-done:
+			if len(c.Errors) == 0 || len(c.Defines) != 0 {
+				t.Errorf("%q: %+v", src, c)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("%q: the C front end did not return in 10 s", src)
+		}
+	}
+}
+
 func TestCFrontEndPanic(t *testing.T) {
 	old := cAnalyze
 	t.Cleanup(func() { cAnalyze = old })

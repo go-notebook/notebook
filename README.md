@@ -131,7 +131,7 @@ A ` ```julia ` block is a Julia cell (v0.6.0 and later). It is parsed with [go-e
 
 No external `julia` is started: execution waits for go-embedded-julia's own lowering and runtime.
 
-In the HTML export, Julia and R cells are highlighted with [go-rouge](https://github.com/go-rouge/rouge)'s `julia` and `r` lexers (go-rouge v0.8.0 and later, transcribed from Rouge v5.1.0); both languages implement `analysis.Highlighter`.
+In the HTML export, Julia and R cells are highlighted with [go-rouge](https://github.com/go-rouge/rouge)'s `julia` and `r` lexers (go-rouge v0.8.0 and later, transcribed from Rouge v5.1.0); both languages implement `analysis.Highlighter`. Since go-rouge v0.9.0 a lexer match is bounded to 16 MiB of stack: on a pathological cell the rest of it becomes plain text.
 
 ## R cells
 

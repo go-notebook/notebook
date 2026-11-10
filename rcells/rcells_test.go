@@ -242,6 +242,33 @@ func TestSerialised(t *testing.T) {
 	}
 }
 
+// A cell's files live in the session's private in-memory file system: it can
+// write and read them back, but no host file and no host environment variable
+// is reachable, and the file system is bounded.
+func TestFilesAreSealedFromTheHost(t *testing.T) {
+	host := t.TempDir() + "/secret.txt"
+	if err := os.WriteFile(host, []byte("host secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NOTEBOOK_TEST_SECRET", "s3cret")
+	s := NewWith(sloppy)
+	if r := run(t, s, `writeLines(c("a", "b"), "notes.txt"); readLines("notes.txt")`); r.failure != "" || r.stdout != "[1] \"a\" \"b\"\n" {
+		t.Errorf("in-memory file: %+v", r)
+	}
+	if r := run(t, s, `file.exists("`+host+`")`); r.failure != "" || r.stdout != "[1] FALSE\n" {
+		t.Errorf("host file visible: %+v", r)
+	}
+	if r := run(t, s, `readLines("`+host+`")`); r.failure == "" || strings.Contains(r.stdout, "host secret") {
+		t.Errorf("host file read: %+v", r)
+	}
+	if r := run(t, s, `Sys.getenv("NOTEBOOK_TEST_SECRET")`); r.failure != "" || r.stdout != "[1] \"\"\n" {
+		t.Errorf("host environment visible: %+v", r)
+	}
+	if o := newOptions(runtime.RLimits{}.Resolve()); o.MaxFileBytes != maxFileBytes || o.FileRoot != "" || o.Env != nil {
+		t.Errorf("file options %d %q %v", o.MaxFileBytes, o.FileRoot, o.Env)
+	}
+}
+
 func TestWarningText(t *testing.T) {
 	if WarningText(nil, false) != "" || WarningText(nil, true) != "" {
 		t.Error("no warning")

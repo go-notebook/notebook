@@ -39,6 +39,14 @@ type Session struct {
 // 512 MiB of doubles, as much as the default of MaxAlloc.
 const maxVector = 1 << 26
 
+// maxFileBytes bounds the session's files (readLines, saveRDS, sink...): 64
+// MiB. They live in go-embedded-r's private in-memory file system, which is
+// heap the cell's MaxAlloc does not count, so the bound is set here rather
+// than left at the library's 256 MiB. No FileRoot is set, so no host file is
+// reachable, and Env is nil, so Sys.getenv sees no host variable: a notebook
+// may come from anyone.
+const maxFileBytes = 64 << 20
+
 // parseLimits bound the source of a cell, as analysis does before it is run.
 var parseLimits = syntax.Limits{MaxBytes: 4 << 20, MaxDepth: 1000, MaxNodes: 1 << 20}
 
@@ -57,11 +65,12 @@ func NewWith(l runtime.RLimits) *Session {
 // newOptions are the options of a session with limits that are resolved.
 func newOptions(l runtime.RLimits) eval.Options {
 	return eval.Options{
-		MaxVector: maxVector,
-		MaxAlloc:  l.MaxAlloc,
-		MaxSteps:  l.MaxSteps,
-		Timeout:   l.Timeout,
-		Parse:     parseLimits,
+		MaxVector:    maxVector,
+		MaxAlloc:     l.MaxAlloc,
+		MaxSteps:     l.MaxSteps,
+		Timeout:      l.Timeout,
+		MaxFileBytes: maxFileBytes,
+		Parse:        parseLimits,
 	}
 }
 

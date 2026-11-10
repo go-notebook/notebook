@@ -135,7 +135,7 @@ In the HTML export, Julia and R cells are highlighted with [go-rouge](https://gi
 
 ## R cells
 
-A ` ```r ` block is an R cell (parsed since v0.8.0, run after v0.10.0). R is [go-embedded-r](https://github.com/go-embedded-r/r) (v0.6.0), a pure-Go R: no external `R` is started. Since v0.5.0 it has environments as values, the apply family and the string functions; since v0.6.0 its regular expressions are a port of R's TRE (`perl=TRUE` and approximate matching are refused). Its parser, a port of R 4.6's grammar that gives the same trees and tokens as R 4.6.2 on all of R's own `src/library` and `tests` (932 files), checks the cell; its evaluator runs it.
+A ` ```r ` block is an R cell (parsed since v0.8.0, run after v0.10.0). R is [go-embedded-r](https://github.com/go-embedded-r/r) (v0.13.1), a pure-Go R: no external `R` is started. Since v0.5.0 it has environments as values, the apply family and the string functions; since v0.6.0 its regular expressions are a port of R's TRE (`perl=TRUE` and approximate matching are refused); since v0.13.0 a cell can use files and connections (`readLines`/`writeLines`, `file.*`, `saveRDS`/`readRDS`, `source`, `sink`/`capture.output`). Those files live in a private in-memory file system of at most 64 MiB per notebook: no host file is reachable, and `Sys.getenv` sees no host variable. Its parser, a port of R 4.6's grammar that gives the same trees and tokens as R 4.6.2 on all of R's own `src/library` and `tests` (932 files), checks the cell; its evaluator runs it.
 
 ```r
 xs <- c(2.1, 3.4, 1.9, 5.6)

@@ -3,6 +3,7 @@ package rcells
 import (
 	"context"
 	"os"
+	"path/filepath"
 	goruntime "runtime"
 	"strings"
 	"sync"
@@ -246,10 +247,13 @@ func TestSerialised(t *testing.T) {
 // write and read them back, but no host file and no host environment variable
 // is reachable, and the file system is bounded.
 func TestFilesAreSealedFromTheHost(t *testing.T) {
-	host := t.TempDir() + "/secret.txt"
+	host := filepath.Join(t.TempDir(), "secret.txt")
 	if err := os.WriteFile(host, []byte("host secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// In an R string literal a Windows backslash starts an escape (\U...):
+	// forward slashes name the same file on every platform.
+	host = filepath.ToSlash(host)
 	t.Setenv("NOTEBOOK_TEST_SECRET", "s3cret")
 	s := NewWith(sloppy)
 	if r := run(t, s, `writeLines(c("a", "b"), "notes.txt"); readLines("notes.txt")`); r.failure != "" || r.stdout != "[1] \"a\" \"b\"\n" {
@@ -258,7 +262,7 @@ func TestFilesAreSealedFromTheHost(t *testing.T) {
 	if r := run(t, s, `file.exists("`+host+`")`); r.failure != "" || r.stdout != "[1] FALSE\n" {
 		t.Errorf("host file visible: %+v", r)
 	}
-	if r := run(t, s, `readLines("`+host+`")`); r.failure == "" || strings.Contains(r.stdout, "host secret") {
+	if r := run(t, s, `readLines("`+host+`")`); r.failure == "" || strings.HasPrefix(r.failure, "syntax error") || strings.Contains(r.stdout, "host secret") {
 		t.Errorf("host file read: %+v", r)
 	}
 	if r := run(t, s, `Sys.getenv("NOTEBOOK_TEST_SECRET")`); r.failure != "" || r.stdout != "[1] \"\"\n" {

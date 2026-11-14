@@ -364,3 +364,20 @@ func TestEval(t *testing.T) {
 		t.Errorf("syntax error: %+v, %v", out, err)
 	}
 }
+
+// NewWithDepth bounds the nesting of evaluations: a recursion that the default
+// allows is refused with R's own message under a smaller bound, and the session
+// is kept.
+func TestNewWithDepth(t *testing.T) {
+	src := "f <- function(n) if (n == 0) 0 else 1 + f(n - 1)\nf(200)\n"
+	if r := run(t, NewWith(sloppy), src); r.failure != "" || r.stdout != "[1] 200\n" {
+		t.Errorf("default depth: %+v", r)
+	}
+	s := NewWithDepth(sloppy, 100)
+	if r := run(t, s, src); !strings.HasPrefix(r.failure, "Error: evaluation nested too deeply") {
+		t.Errorf("depth 100: %+v", r)
+	}
+	if r := run(t, s, "1 + 1"); r.stdout != "[1] 2\n" || r.failure != "" {
+		t.Errorf("the session after the bound: %+v", r)
+	}
+}

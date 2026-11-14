@@ -57,9 +57,18 @@ func New() *Session { return NewWith(runtime.ParseRLimits(os.Getenv(runtime.RLim
 // NewWith makes a session with the given limits, where a zero field is
 // runtime.DefaultRLimits' value and runtime.Unbounded (-1), which is
 // eval.Unbounded, is no bound: NewWith(runtime.RLimits{}) is bounded.
-func NewWith(l runtime.RLimits) *Session {
+func NewWith(l runtime.RLimits) *Session { return NewWithDepth(l, 0) }
+
+// NewWithDepth is NewWith with a bound on the nesting of evaluations, R's
+// "expressions" option, for an embedder whose stack is smaller than a process's
+// (WebAssembly in a browser: the engine's own recursion overflows the host's
+// call stack before go-embedded-r's default of 5000 is reached). Zero is that
+// default.
+func NewWithDepth(l runtime.RLimits, maxDepth int) *Session {
 	l = l.Resolve()
-	return &Session{l: l, s: eval.NewSession(newOptions(l))}
+	o := newOptions(l)
+	o.MaxDepth = maxDepth
+	return &Session{l: l, s: eval.NewSession(o)}
 }
 
 // newOptions are the options of a session with limits that are resolved.

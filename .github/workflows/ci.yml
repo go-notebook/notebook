@@ -37,6 +37,7 @@ jobs:
       - run: go vet ./...
       - run: go build ./...
       - name: rcells builds for WebAssembly (the playground's core runs R cells with it)
+        shell: bash
         run: GOOS=js GOARCH=wasm go build ./rcells ./runtime
       - name: Test + 100% coverage gate
         shell: bash

@@ -83,24 +83,41 @@ func (s *Session) Run(c Cell) { s.RunContext(context.Background(), c) }
 
 // RunContext is Run that ends, as a failed cell, when ctx is done.
 func (s *Session) RunContext(ctx context.Context, c Cell) {
+	out, err := s.Eval(ctx, c)
+	write(os.Stdout, out.Stdout)
+	write(os.Stderr, out.Stderr)
+	if err != nil {
+		panic(err)
+	}
+}
+
+// Output is what a cell wrote: Stdout is what it printed, with the value of its
+// last expression when R would print it, Stderr what it wrote to standard error
+// followed by its warnings, in R's "Warning message:" form.
+type Output struct{ Stdout, Stderr string }
+
+// Eval evaluates a cell like RunContext, but returns what it wrote instead of
+// writing it to the process's standard streams: an embedder with no such
+// streams of its own (the playground's WebAssembly core) shows the text.
+// The Output is complete also when the cell fails; the error, a runtime.CellError,
+// says why, as RunContext's panic does. Nothing in Eval touches the host.
+func (s *Session) Eval(ctx context.Context, c Cell) (Output, error) {
 	s.mu.Lock()
 	res, err := s.s.EvalContext(ctx, c.Source)
 	s.mu.Unlock()
 	if err != nil {
-		panic(s.failure(err))
+		out, f := s.failure(err)
+		return out, f
 	}
-	write(os.Stdout, res.Output)
-	write(os.Stderr, res.Stderr)
-	write(os.Stderr, WarningText(res.Warnings, false))
+	return Output{res.Output, res.Stderr + WarningText(res.Warnings, false)}, nil
 }
 
-// failure is the cell's failure for an error of the evaluation, after what the
-// cell wrote before it failed has been written.
-func (s *Session) failure(err error) cellError {
+// failure is the cell's failure for an error of the evaluation, with what the
+// cell wrote before it failed.
+func (s *Session) failure(err error) (Output, cellError) {
 	var ee *eval.Error
 	if errors.As(err, &ee) {
-		write(os.Stdout, ee.Output)
-		write(os.Stderr, ee.Stderr)
+		out := Output{ee.Output, ee.Stderr}
 		msg := ee.Error()
 		switch {
 		case errors.Is(err, context.DeadlineExceeded) && s.l.Timeout > 0:
@@ -113,13 +130,13 @@ func (s *Session) failure(err error) cellError {
 		if w := WarningText(ee.Warnings, true); w != "" {
 			msg += "\n" + w
 		}
-		return cellError(msg)
+		return out, cellError(msg)
 	}
 	var se *syntax.Error
 	if errors.As(err, &se) {
-		return cellError(fmt.Sprintf("syntax error: %s (line %d)", se.Message, se.Line))
+		return Output{}, cellError(fmt.Sprintf("syntax error: %s (line %d)", se.Message, se.Line))
 	}
-	return cellError("the R cell is too large or too deeply nested to run: " + err.Error())
+	return Output{}, cellError("the R cell is too large or too deeply nested to run: " + err.Error())
 }
 
 // WarningText is how R prints its warnings at the end of a cell. One warning
@@ -161,3 +178,6 @@ type cellError string
 
 // CellError is the failure.
 func (e cellError) CellError() string { return string(e) }
+
+// Error makes the failure an error, for Eval.
+func (e cellError) Error() string { return string(e) }

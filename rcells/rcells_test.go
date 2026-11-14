@@ -2,6 +2,7 @@ package rcells
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -342,5 +343,24 @@ func TestAllocBomb(t *testing.T) {
 	}
 	if r := run(t, s, "1"); r.stdout != "[1] 1\n" {
 		t.Errorf("the session after the bombs: %+v", r)
+	}
+}
+
+// Eval returns what the cell wrote, in the streams RunContext would have
+// written it to, and the failure as an error that is a runtime.CellError; it
+// writes nothing to the process.
+func TestEval(t *testing.T) {
+	s := NewWith(sloppy)
+	out, err := s.Eval(context.Background(), Cell{Source: "f <- function(x) { warning('careful'); x }\nf(1)\nmessage('m')\n"})
+	if err != nil || out.Stdout != "[1] 1\n" || out.Stderr != "m\nWarning message:\nIn f(1) : careful\n" {
+		t.Errorf("%+v, %v", out, err)
+	}
+	out, err = s.Eval(context.Background(), Cell{Source: "cat('before\\n')\nstop('boom')\n"})
+	var ce runtime.CellError
+	if !errors.As(err, &ce) || ce.CellError() != "Error: boom" || out.Stdout != "before\n" {
+		t.Errorf("%+v, %v", out, err)
+	}
+	if out, err = s.Eval(context.Background(), Cell{Source: "x <- <- 1"}); err == nil || out != (Output{}) {
+		t.Errorf("syntax error: %+v, %v", out, err)
 	}
 }

@@ -344,7 +344,8 @@ var juliaParser, rParser func(index int, src string) *Cell
 
 // EnableParsers links go-embedded-julia's and go-embedded-r's parsers into
 // the analysis of Julia and R cells; analysis/parsers also calls SetCParser
-// for C, whose front end this package does not import at all. Import
+// and SetFortranParser for C and Fortran, whose front ends this package does
+// not import at all. Import
 // github.com/go-notebook/notebook/analysis/parsers rather than calling it.
 func EnableParsers() {
 	juliaParser, rParser = AnalyzeJuliaCell, AnalyzeRCell
@@ -387,5 +388,11 @@ func init() {
 		Blocked:      CBlocked,
 		Reads:        cReads,
 		ReadsBlocked: cReadsBlocked,
+	}}}})
+	Register(fortranLang{localsLang{builtinLang{name: Fortran, cell: fortranStandalone, run: Run{
+		NotRun:       FortranNotRun,
+		Blocked:      FortranBlocked,
+		Reads:        fortranReads,
+		ReadsBlocked: fortranReadsBlocked,
 	}}}})
 }

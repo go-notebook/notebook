@@ -82,10 +82,10 @@ func register(t *testing.T, l Language) {
 }
 
 func TestRegistry(t *testing.T) {
-	if got := Languages(); !reflect.DeepEqual(got, []string{"c", "go", "julia", "r", "ruby"}) {
+	if got := Languages(); !reflect.DeepEqual(got, []string{"c", "fortran", "go", "julia", "r", "ruby"}) {
 		t.Fatalf("Languages = %v", got)
 	}
-	for _, n := range []string{"go", "ruby", "julia", "r", "c", ""} {
+	for _, n := range []string{"go", "ruby", "julia", "r", "c", "fortran", ""} {
 		if Lookup(n) == nil {
 			t.Errorf("Lookup(%q) = nil", n)
 		}
@@ -99,7 +99,7 @@ func TestRegistry(t *testing.T) {
 		}
 	}
 	register(t, fakeLang{name: "fake"})
-	if Lookup("fake") == nil || len(Languages()) != 6 {
+	if Lookup("fake") == nil || len(Languages()) != 7 {
 		t.Error("fake not registered")
 	}
 	mustPanic(t, "duplicate", func() { Register(fakeLang{name: "fake"}) })
@@ -149,7 +149,7 @@ func TestCapabilities(t *testing.T) {
 	if m := Lookup("ruby").(Runtime).Runtime(); m.Path != RubyPath || m.Module != RubyModule || m.Version != DefaultRubyVersion {
 		t.Errorf("module %+v", m)
 	}
-	for lang, lexer := range map[string]string{"go": "go", "ruby": "ruby", "c": "c", "julia": "julia", "r": "r"} {
+	for lang, lexer := range map[string]string{"go": "go", "ruby": "ruby", "c": "c", "fortran": "fortran", "julia": "julia", "r": "r"} {
 		if h, ok := Lookup(lang).(Highlighter); !ok || h.Lexer() != lexer {
 			t.Errorf("%s lexer", lang)
 		}

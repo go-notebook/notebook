@@ -147,7 +147,7 @@ total / length(xs)
 - **Output.** What a cell prints is its output, as an R console shows it: `print`, `cat`, and the value of every visible top-level expression. An invisible value (`x <- 1`, `invisible(x)`) prints nothing. `message()` and the cell's warnings go to the standard error, the warnings in R's form (`Warning message:` then `In f(x) : text`; `Warning messages:` and a numbered line each when there are several). An error fails the cell as `Error in f(x) : text`, after the output written before it, and the cells that read it do not run. A cell that goes over a limit fails the same way.
 - **Syntax errors** are reported at the notebook's line and column, with R's own message (`5:8: cell 0: syntax error: unexpected symbol`).
 - **Names** follow R's scoping at the top level: `x <- v`, `x = v`, `v -> x`, `assign("x", v)`, `x$a <- v`, `names(x) <- v` and a top-level `for` variable define; the free variables of the cell and of its functions' bodies are read. A cell whose names cannot be known from its text (`<<-`, `eval`, `assign`/`get` with a computed name, `attach`, `library`, `source`) is **dynamic**: it depends on every earlier cell, and every later cell that reads a name depends on it.
-- **R variables stay in R.** They are not shared with Go, Ruby, Julia or C cells in either direction yet: a Go cell that reads an R name finds it undefined, and an R cell does not see a Go variable (`analysis.Isolated`). A cell shows text only, no figure.
+- **R variables stay in R.** They are not shared with Go, Ruby, Julia, C or Fortran cells in either direction yet: a Go cell that reads an R name finds it undefined, and an R cell does not see a Go variable (`analysis.Isolated`). A cell shows text only, no figure.
 - **Limits.** go-embedded-r (since v0.4.0) bounds every evaluation by default, and a notebook may come from anyone, so the kernel gives each R cell its own bounds (`kernel.Options.R`; a zero field is the default, `-1` is no bound):
 
   | Limit | Default | Ends a cell with |
@@ -173,15 +173,26 @@ A ` ```c ` block is a C cell. It is checked with [go-embedded-c](https://github.
 
 No external C compiler is started.
 
-### The Julia, R and C parsers are opt-in (v0.9.0)
+## Fortran cells: checked, not run yet
 
-The `gen`, `kernel` and `export` packages and the `notebook` command analyse Julia, R and C cells as above. A program that imports `analysis` alone must also import `analysis/parsers` to get the same:
+A ` ```fortran ` block is a Fortran cell. It is checked with [go-embedded-fortran](https://github.com/go-embedded-fortran/fortran)'s front end (its `sema` session, free form, implicit typing off), and highlighted with go-rouge's `fortran` lexer. A cell is a program's loose material and units alike: declarations and statements at top level, subroutines, functions, modules, derived types.
+
+- **Cells are not independent.** A Fortran cell sees the variables, procedures, modules and derived types of the Fortran cells before it, in notebook order (`analysis.Sequential`): `m = n + 1` is fine in a cell after the one that has `integer :: n = 3`, and an error alone. A cell with an error leaves nothing behind for the next ones. Names are case-insensitive; the lower-case name is the one in the graph.
+- **Names**: variables and named constants (`parameter`) are declared at top level, subroutines and functions, derived types and modules are defined; the names a cell reads from earlier Fortran cells are its uses, and give the graph its edges. Only **variables** cross to the other languages; procedures, parameters, derived types and modules stay Fortran's. A reference to an earlier cell's derived type or a `use` of its module is not a use yet (the front end does not report it); the session still resolves it. Redefinition shadows in Fortran, and is refused here as go-notebook's rule of one definition per name.
+- **Diagnostics** are the front end's, at the byte offset of the line and column it reports. `INCLUDE` is refused (no file is read); a cell is limited to 1 MiB, and the front end bounds nesting, continuation lines and symbols.
+- **Running** a Fortran cell fails, clearly: *Fortran cells are not run yet (go-embedded-fortran: the evaluator is incomplete)*. The cells that read what it defines are **blocked**; the others run.
+
+`analysis` does not import go-embedded-fortran (`TestNoEmbeddedFortranImport`): `analysis/parsers` links it through `analysis.SetFortranParser`, like the C front end.
+
+### The Julia, R, C and Fortran parsers are opt-in (v0.9.0)
+
+The `gen`, `kernel` and `export` packages and the `notebook` command analyse Julia, R, C and Fortran cells as above. A program that imports `analysis` alone must also import `analysis/parsers` to get the same:
 
 ```go
 import _ "github.com/go-notebook/notebook/analysis/parsers"
 ```
 
-Without it, Julia, R and C stay registered, with their names and run capability, and their cells fail with `analysis.ParserMissing`. The point is size: a WebAssembly program that never analyses those cells, such as the playground's default core, leaves out 1.44 MB of parser code. The parsers' package `init` tables, about 0.29 MB, still come in through `analysis`'s imports. Measured on a probe that analyses a Go and a C cell (go 1.27, `GOOS=js GOARCH=wasm`): 5.07 MB without `analysis/parsers`, 10.75 MB with it; v0.9.0 was 5.06 and 6.53 MB. `analysis` does not import go-embedded-c (`TestNoEmbeddedCImport`): the C front end is linked by `analysis/parsers` through `analysis.SetCParser`, so a program without the parsers is 0.01 MB larger than at v0.9.0. Natively on darwin/arm64: 4.18 MB without, 8.11 MB with (v0.9.0: 4.17 and 5.24).
+Without it, Julia, R, C and Fortran stay registered, with their names and run capability, and their cells fail with `analysis.ParserMissing`. The point is size: a WebAssembly program that never analyses those cells, such as the playground's default core, leaves out 1.44 MB of parser code. The parsers' package `init` tables, about 0.29 MB, still come in through `analysis`'s imports. Measured on a probe that analyses a Go and a C cell (go 1.27, `GOOS=js GOARCH=wasm`): 5.07 MB without `analysis/parsers`, 10.75 MB with it; v0.9.0 was 5.06 and 6.53 MB. `analysis` does not import go-embedded-c (`TestNoEmbeddedCImport`): the C front end is linked by `analysis/parsers` through `analysis.SetCParser`, so a program without the parsers is 0.01 MB larger than at v0.9.0. Natively on darwin/arm64: 4.18 MB without, 8.11 MB with (v0.9.0: 4.17 and 5.24).
 
 ## An interactive session: `notebook irb`
 

@@ -4,6 +4,7 @@ go 1.27.2
 
 require (
 	github.com/go-embedded-c/c v0.2.1
+	github.com/go-embedded-fortran/fortran v0.9.0
 	github.com/go-embedded-julia/julia v0.5.0
 	github.com/go-embedded-r/r v0.13.1
 	github.com/go-rouge/rouge v0.9.0

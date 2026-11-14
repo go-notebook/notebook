@@ -2,6 +2,7 @@ package rcells
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -342,5 +343,41 @@ func TestAllocBomb(t *testing.T) {
 	}
 	if r := run(t, s, "1"); r.stdout != "[1] 1\n" {
 		t.Errorf("the session after the bombs: %+v", r)
+	}
+}
+
+// Eval returns what the cell wrote, in the streams RunContext would have
+// written it to, and the failure as an error that is a runtime.CellError; it
+// writes nothing to the process.
+func TestEval(t *testing.T) {
+	s := NewWith(sloppy)
+	out, err := s.Eval(context.Background(), Cell{Source: "f <- function(x) { warning('careful'); x }\nf(1)\nmessage('m')\n"})
+	if err != nil || out.Stdout != "[1] 1\n" || out.Stderr != "m\nWarning message:\nIn f(1) : careful\n" {
+		t.Errorf("%+v, %v", out, err)
+	}
+	out, err = s.Eval(context.Background(), Cell{Source: "cat('before\\n')\nstop('boom')\n"})
+	var ce runtime.CellError
+	if !errors.As(err, &ce) || ce.CellError() != "Error: boom" || out.Stdout != "before\n" {
+		t.Errorf("%+v, %v", out, err)
+	}
+	if out, err = s.Eval(context.Background(), Cell{Source: "x <- <- 1"}); err == nil || out != (Output{}) {
+		t.Errorf("syntax error: %+v, %v", out, err)
+	}
+}
+
+// NewWithDepth bounds the nesting of evaluations: a recursion that the default
+// allows is refused with R's own message under a smaller bound, and the session
+// is kept.
+func TestNewWithDepth(t *testing.T) {
+	src := "f <- function(n) if (n == 0) 0 else 1 + f(n - 1)\nf(200)\n"
+	if r := run(t, NewWith(sloppy), src); r.failure != "" || r.stdout != "[1] 200\n" {
+		t.Errorf("default depth: %+v", r)
+	}
+	s := NewWithDepth(sloppy, 100)
+	if r := run(t, s, src); !strings.HasPrefix(r.failure, "Error: evaluation nested too deeply") {
+		t.Errorf("depth 100: %+v", r)
+	}
+	if r := run(t, s, "1 + 1"); r.stdout != "[1] 2\n" || r.failure != "" {
+		t.Errorf("the session after the bound: %+v", r)
 	}
 }

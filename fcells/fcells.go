@@ -47,10 +47,13 @@ type Options struct {
 	// standard error together; the rest is dropped, and the cell says so. Zero
 	// is DefaultMaxOutput.
 	MaxOutput int
-	// MaxAlloc bounds the Go heap, in bytes, that an array of 64 KiB or more may
-	// grow (the evaluator's SessionOptions.MaxAlloc): an array that would take
-	// the heap past it, after a collection, is refused before it is allocated.
-	// The heap is the process's. Zero is DefaultMaxAlloc, negative is no bound.
+	// MaxAlloc bounds the storage the session holds, in bytes (the evaluator's
+	// SessionOptions.MaxAlloc, a counted budget): every variable, array,
+	// derived-type object and character component is charged before it is
+	// allocated and credited when it is let go, and a cell that would pass the
+	// bound fails and allocates nothing for it, whatever the size of the
+	// allocations. It is the session's own count, not the process's heap. Zero
+	// is DefaultMaxAlloc, negative is no bound.
 	MaxAlloc int64
 }
 

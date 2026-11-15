@@ -212,9 +212,28 @@ func TestOneCapForBothStreams(t *testing.T) {
 	}
 }
 
-// A bomb is refused before it is allocated, as the cell's own failure, and the
-// session runs the next cell.
+// The budget counts what a session holds, whatever the size of each
+// allocation: two arrays of 2^25 int64 (256 MiB each) under 512 MiB, 100000
+// objects of a type with a 64000-byte array component (6.4 GB, no allocation
+// over 64 KiB) and objects with a 1 MiB character component are refused, each
+// as the cell's own failure, before they are allocated, and the session runs the
+// next cell. A check reduced to the size of one allocation lets all three through.
 func TestAllocBombIsRefused(t *testing.T) {
+	for name, src := range map[string]string{
+		"accumulation":        "integer, allocatable :: a(:), b(:)\nallocate(a(2**25))\nallocate(b(2**25))\n",
+		"array component":     "type :: t\nreal(8) :: x(8000)\nend type\ntype(t) :: a(100000)\n",
+		"character component": "type :: u\ncharacter(len=1048576) :: c\nend type\ntype(u) :: a(2000)\n",
+	} {
+		s := NewWith(Options{MaxAlloc: 512 << 20})
+		_, err := s.Eval(context.Background(), Cell{Source: src})
+		if err == nil || !strings.Contains(err.Error(), "memory limit exceeded") {
+			t.Fatalf("%s: %v", name, err)
+		}
+		out := eval1(t, s, "print *, 6 * 7\n")
+		if strings.TrimSpace(out.Stdout) != "42" {
+			t.Fatalf("%s: %q", name, out.Stdout)
+		}
+	}
 	s := NewWith(Options{MaxAlloc: 256 << 20})
 	_, err := s.Eval(context.Background(), Cell{Source: "integer, allocatable :: a(:), b(:)\nallocate(a(2**27))\nallocate(b(2**27))\n"})
 	if err == nil || !strings.Contains(err.Error(), "memory limit exceeded") {

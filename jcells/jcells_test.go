@@ -103,10 +103,10 @@ func TestImageIsPinned(t *testing.T) {
 	if err != nil || d != pinned {
 		t.Fatalf("Digest %q does not parse: %v", Digest, err)
 	}
-	if Version != "v0.15.0" || Digest != "a4568120a0db7acb054b1ab50727d41fe5091177b6c494541e5c88ff282c1bcf" {
+	if Version != "v0.17.0" || Digest != "d243d2b748afb7d331227195d835357b6502184bedcdc4bcc296854276c2f6ec" {
 		t.Fatalf("the pinned image changed: %s %s (moving it is a decision: go.mod, images.sum, this test)", Version, Digest)
 	}
-	if want := "julia-image-v0.15.0.bin"; interp.ImageAssetName(Version) != want {
+	if want := "julia-image-v0.17.0.bin"; interp.ImageAssetName(Version) != want {
 		t.Fatalf("asset %s", interp.ImageAssetName(Version))
 	}
 	old := fetchKernel
@@ -481,24 +481,40 @@ func TestCancel(t *testing.T) {
 	s.RunContext(ctx, Cell{Source: "1"})
 }
 
-// Soft scope (go-embedded-julia#54): at the top level of a cell a loop that
-// assigns a global that the cell defined raises UndefVarError here, where
-// julia 1.12 in the REPL (and IJulia) updates the global. This pins today's
-// behaviour; when the interpreter is fixed the test fails and says so, and the
-// README's known limitation goes with it.
-func TestKnownLimitationHardScope(t *testing.T) {
+// Soft scope (go-embedded-julia#54, fixed in v0.17.0): at the top level of a
+// cell a loop updates a global the cell defined, as julia 1.12 in the REPL does.
+func TestSoftScope(t *testing.T) {
 	s := sharedSession(t)
-	_, err := s.Eval(context.Background(), Cell{Source: "scope_s = 0\nfor i in 1:10\n    scope_s += i\nend\nscope_s"})
-	if err == nil {
-		t.Fatal("go-embedded-julia#54 is fixed: the loop updated the global. Remove this test and the README's limitation, and expect 55")
+	if out := eval(t, s, "scope_s = 0\nfor i in 1:10\n    scope_s += i\nend\nscope_s"); out.Stdout != "55\n" {
+		t.Fatalf("%+v", out)
 	}
-	// (the text is a Go repr here, not julia's "UndefVarError: `scope_s` not
-	// defined": go-embedded-julia#55)
-	if msg := cellErr(t, err); !strings.HasPrefix(msg, "ERROR: UndefVarError") || !strings.Contains(msg, "scope_s") {
+	// and a global of an earlier cell
+	eval(t, s, "scope_t = 0")
+	if out := eval(t, s, "for i in 1:4\n    scope_t += i\nend\nscope_t"); out.Stdout != "10\n" {
+		t.Fatalf("%+v", out)
+	}
+}
+
+// A MethodError is julia's text (go-embedded-julia#55, fixed in v0.17.0).
+func TestMethodErrorText(t *testing.T) {
+	s := sharedSession(t)
+	_, err := s.Eval(context.Background(), Cell{Source: "sin(\"a\")"})
+	if msg := cellErr(t, err); !strings.HasPrefix(msg, "ERROR: MethodError: no method matching sin(::String)") {
 		t.Fatalf("message %q", msg)
 	}
-	// the same loop inside a function is a local accumulator, which works
-	if out := eval(t, s, "function scope_sum(n)\n    s = 0\n    for i in 1:n\n        s += i\n    end\n    s\nend\nscope_sum(10)"); out.Stdout != "55\n" {
-		t.Fatalf("%+v", out)
+}
+
+// Known gaps of the Base image, which a cell sees as "not ported yet" errors
+// (go-embedded-julia#67, #65: ASCII uppercase and Int matrix products work). They are pinned so that a fix shows up: when one
+// passes, the README's limitation goes.
+func TestKnownGapsOfTheImage(t *testing.T) {
+	s := sharedSession(t)
+	for name, src := range map[string]string{
+		"a Float64 matrix-vector product (BLAS, #67)":     "[1.0 2.0; 3.0 4.0] * [1.0, 1.0]",
+		"uppercase of a non-ASCII string (utf8proc, #65)": "uppercase(\"é\")",
+	} {
+		if _, err := s.Eval(context.Background(), Cell{Source: src}); err == nil {
+			t.Errorf("%s works now: remove it from the README's limitations and this test", name)
+		}
 	}
 }

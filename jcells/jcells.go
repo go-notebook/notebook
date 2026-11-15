@@ -40,8 +40,8 @@ import (
 // main has the line, the v0.15.0 tag's own copy does not). Moving to another release is changing
 // both here, with the module's version in go.mod.
 const (
-	Version = "v0.15.0"
-	Digest  = "a4568120a0db7acb054b1ab50727d41fe5091177b6c494541e5c88ff282c1bcf"
+	Version = "v0.17.0"
+	Digest  = "d243d2b748afb7d331227195d835357b6502184bedcdc4bcc296854276c2f6ec"
 )
 
 // pinned is Digest as the kernel takes it; TestImageIsPinned checks that the
@@ -67,9 +67,26 @@ var fetchTimeout = 5 * time.Minute
 // (A variable, for the test that fills it in less than a minute.)
 var maxOutput = 16 << 20
 
+// Var is a notebook variable at the boundary: its name and a pointer to the Go
+// variable that holds it.
+type Var struct {
+	Name string
+	Ptr  any
+	// IfAbsent gives the kernel the variable only when Main does not hold it
+	// already: a Julia cell's variable, which the kernel keeps from cell to cell
+	// but which a new worker gets back from its Go holder.
+	IfAbsent bool
+}
+
 // Cell is one Julia cell as the generated program hands it over.
 type Cell struct {
 	Source string
+	// In are the variables the cell reads that other cells define, Out those it
+	// assigns. Only values of the types in the package comment cross.
+	In, Out []Var
+	// Note records the Go type each Out variable has now (see GoType), which
+	// the next program declares it with; nil notes nothing.
+	Note func(name, typ string)
 }
 
 // Session is the Julia kernel of one notebook. Its calls are serialised: a
@@ -175,6 +192,9 @@ func (s *Session) Eval(ctx context.Context, c Cell) (Output, error) {
 	if s.startErr != nil {
 		return Output{}, s.startErr
 	}
+	if err := s.give(c.In); err != nil {
+		return Output{}, err
+	}
 	res := s.k.EvalWith(ctx, c.Source, s.options())
 	out := Output{Stdout: res.Stdout, Stderr: res.Stderr}
 	if res.Truncated {
@@ -183,6 +203,7 @@ func (s *Session) Eval(ctx context.Context, c Cell) (Output, error) {
 	if res.Err != nil {
 		return out, s.failure(res.Err)
 	}
+	s.take(c)
 	if show(res.Value, c.Source) {
 		out.Stdout += res.Value + "\n"
 	}

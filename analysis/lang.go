@@ -308,17 +308,17 @@ func (rubyLang) Runtime() Module {
 }
 
 // juliaLang: Julia cells run in one kernel of the worker (jcells), which holds
-// their globals, so they share them with the other Julia cells and with no cell
-// of another language (Isolated), as R's do: nothing carries a value between
-// the kernel's Main and a Go variable yet. It is highlighted with go-rouge's
-// julia lexer (go-rouge v0.8.0, from Rouge v5.1.0).
-type juliaLang struct{ builtinLang }
+// their globals, so they share them with the other Julia cells. Like Ruby's,
+// the variables of a Julia cell cross to the other languages (not its functions,
+// macros, constants or types), with the Go type the value had when the cell last
+// ran (LearnsTypes), for the types the kernel's Get and Set convert: Int64,
+// Float64, Bool, String, and Vector and Matrix of Float64 or Int64. It is
+// highlighted with go-rouge's julia lexer (go-rouge v0.8.0, from Rouge v5.1.0).
+type juliaLang struct{ localsLang }
 
 func (juliaLang) Lexer() string { return "julia" }
 
-func (juliaLang) Crosses(_, _ *Cell, _ string) bool { return false }
-
-func (juliaLang) Isolated() bool { return true }
+func (juliaLang) LearnsTypes() bool { return true }
 
 func (juliaLang) Runtime() Module { return Module{Path: JuliaPath, Module: JuliaModule} }
 
@@ -381,7 +381,7 @@ func withParser(parser *func(int, string) *Cell, name, lang string) func(int, st
 func init() {
 	Register(goLang{builtinLang{name: Go, cell: AnalyzeCell, run: Run{Runs: true}}})
 	Register(rubyLang{localsLang{builtinLang{name: Ruby, cell: AnalyzeRubyCell, run: Run{Runs: true}}}})
-	Register(juliaLang{builtinLang{name: Julia, cell: withParser(&juliaParser, Julia, "Julia"), run: Run{Runs: true}}})
+	Register(juliaLang{localsLang{builtinLang{name: Julia, cell: withParser(&juliaParser, Julia, "Julia"), run: Run{Runs: true}}}})
 	Register(rLang{builtinLang{name: R, cell: withParser(&rParser, R, "R"), run: Run{Runs: true}}})
 	Register(cLang{localsLang{builtinLang{name: C, cell: cStandalone, run: Run{
 		NotRun:       CNotRun,

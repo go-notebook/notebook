@@ -44,7 +44,10 @@ type Var struct {
 	Cell int
 	// Ruby marks a Ruby cell's variable. Its Go holder is named Ident when
 	// its name is no Go identifier (len, type): Go cells do not see it.
-	Ruby  bool
+	Ruby bool
+	// Julia marks a Julia cell's variable, whose Go type is learned like a
+	// Ruby variable's: it crosses only when it is of a type the kernel converts.
+	Julia bool
 	Ident string
 }
 
@@ -100,7 +103,7 @@ func GenerateWith(path string, cells []Code, imp types.Importer, opt Options) *P
 	for i, c := range cells {
 		srcs[i] = analysis.Source{Lang: c.Lang, Source: c.Source}
 	}
-	g := &generator{path: path, cells: cells, imp: imp, opt: opt, unknown: map[string]bool{}, blockedBy: map[int]string{},
+	g := &generator{path: path, cells: cells, imp: imp, opt: opt, unknown: map[string]bool{}, unsupported: map[string]string{}, blockedBy: map[int]string{},
 		prog: &Program{Graph: analysis.AnalyzeSources(srcs), Deferred: map[int]string{}}}
 	g.prog.Imports = map[string]string{}
 	for _, e := range g.prog.Graph.Errors {
@@ -142,6 +145,9 @@ type generator struct {
 	prog  *Program
 	// unknown are the Ruby variables whose Go type is not known yet.
 	unknown map[string]bool
+	// unsupported are the Julia variables of a type that does not cross, by
+	// the Julia type: the Go cells that read one are deferred with a message.
+	unsupported map[string]string
 	// blockedBy maps the deferred cells that read a check-only cell, directly
 	// or through another deferred cell, to that cell's language.
 	blockedBy map[int]string

@@ -23,18 +23,21 @@ func needImage(t *testing.T, errText string) {
 }
 
 // Julia cells run, through the registry alone, in one Julia kernel of the
-// worker: their globals persist from cell to cell, and the other languages
-// neither see nor are seen by them.
+// worker, and their variables cross to the Go cells as Ruby's do: the Go type of
+// a value is learned when the cell has run, and the Go cells that read it are
+// compiled then. Go values go in the other way.
 func TestJuliaCells(t *testing.T) {
 	if testing.Short() {
 		t.Skip("boots the Julia image")
 	}
 	k := newKernel(t)
 	cells := []gen.Code{
-		golang("n := 10\n", 2),
-		julia("xs = [i^2 for i in 1:4]\ntotal = sum(xs)\n", 6),
-		julia("println(\"total = \", total)\ntotal + 1\n", 11),
-		golang("m := n * 2\nm\n", 15),
+		golang("n := 4\n", 2),
+		julia("xs = [Float64(i) for i in 1:n]\ntotal = sum(xs)\nA = [1.0 2.0; 3.0 4.0]\nsquare(x) = x^2\n", 6),
+		golang("t := total + 1\nt\n", 11),
+		julia("println(\"total = \", total)\nsquare(total)\n", 15),
+		golang("m := len(xs) * 2\nm\n", 19),
+		golang("a := A.At(1, 0)\na\n", 23),
 	}
 	rep, err := k.Run(cells)
 	if err != nil {
@@ -47,30 +50,46 @@ func TestJuliaCells(t *testing.T) {
 		}
 	}
 	r := rep.Results
-	if got := ran(rep); got != "RRRR" {
+	if got := ran(rep); got != "RRRRRR" {
 		t.Errorf("first run: %s", got)
 	}
-	if r[1].Output != "30\n" || r[2].Output != "total = 30\n31\n" || shown(r[3]) != "20" {
-		t.Errorf("outputs %q %q %q", r[1].Output, r[2].Output, shown(r[3]))
+	if r[1].Output != "square (generic function with 1 method)\n" || r[3].Output != "total = 10.0\n100.0\n" {
+		t.Errorf("Julia outputs %q %q", r[1].Output, r[3].Output)
+	}
+	if shown(r[2]) != "11" || shown(r[4]) != "8" || shown(r[5]) != "3" {
+		t.Errorf("Go cells that read Julia variables: %q %q %q", shown(r[2]), shown(r[4]), shown(r[5]))
 	}
 	// Nothing changed: nothing runs.
 	rep, err = k.Run(cells)
-	if err != nil || ran(rep) != "...." {
+	if err != nil || ran(rep) != "......" {
 		t.Errorf("second run: %v %s", err, ran(rep))
+	}
+	// A Go cell changes: the Julia cell that reads it runs again, and the Go cells
+	// that read what it defines run again too.
+	cells[0] = golang("n := 5\n", 2)
+	rep, err = k.Run(cells)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shown(rep.Results[4]) != "10" || shown(rep.Results[2]) != "16" {
+		t.Errorf("after the change: %q %q (ran %s)", shown(rep.Results[4]), shown(rep.Results[2]), ran(rep))
 	}
 }
 
-// A Julia failure is the cell's own, with julia's text; the session goes on,
-// and the globals are not Go's: a Go cell that reads one does not compile.
-func TestJuliaErrors(t *testing.T) {
+// A Julia failure is the cell's own, with julia's text; the session goes on. A
+// variable of a type that does not cross stays in Julia: the Go cell that reads
+// it fails with a message that names its Julia type, and Julia cells read it as
+// before. A Go value Julia cannot take fails the Julia cell that reads it,
+// clearly.
+func TestJuliaErrorsAndTypesThatDoNotCross(t *testing.T) {
 	if testing.Short() {
 		t.Skip("boots the Julia image")
 	}
 	k := newKernel(t)
 	rep, err := k.Run([]gen.Code{
-		julia("total = 5\n", 2),
+		julia("total = 5\nd = Dict(1 => 2)\n", 2),
 		julia("println(\"before\")\nerror(\"boom\")\n", 7),
-		julia("total + 1\n", 12),
+		julia("total + d[1]\n", 12),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -80,11 +99,15 @@ func TestJuliaErrors(t *testing.T) {
 	if r[1].Error != "ERROR: boom" || r[1].Output != "before\n" || !r[1].Ran {
 		t.Errorf("failing cell %+v", r[1])
 	}
-	if r[2].Error != "" || r[2].Output != "6\n" {
-		t.Errorf("the session after a failure %+v", r[2])
+	if r[2].Error != "" || r[2].Output != "7\n" {
+		t.Errorf("the session after a failure, and a variable that does not cross %+v", r[2])
 	}
-	rep, err = k.Run([]gen.Code{julia("total = 5\n", 2), golang("t := total + 1\n", 6)})
-	if err != nil || !strings.Contains(rep.Results[1].Error, "undefined: total") {
+	rep, err = k.Run([]gen.Code{julia("d = Dict(1 => 2)\n", 2), golang("x := d\n", 6)})
+	if err != nil || !strings.Contains(rep.Results[1].Error, "it reads d, a Julia variable of type Dict{Int64, Int64}, which does not cross to Go") {
+		t.Errorf("%v %+v", err, rep)
+	}
+	rep, err = k.Run([]gen.Code{golang("words := []string{\"a\"}\n", 2), julia("length(words)\n", 6)})
+	if err != nil || !strings.Contains(rep.Results[1].Error, "the Julia cell reads words, a Go []string that Julia cannot take") {
 		t.Errorf("%v %+v", err, rep)
 	}
 	// A syntax error stops the notebook, at its line.

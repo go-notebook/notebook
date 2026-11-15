@@ -27,6 +27,10 @@ func TestNoEvaluatorImport(t *testing.T) {
 		if strings.HasPrefix(p, "github.com/go-embedded-r/r/eval") || strings.HasSuffix(p, "/notebook/rcells") {
 			t.Errorf("a package that must not carry R's evaluator depends on %s", p)
 		}
+		// and the same for Fortran's (fcells, over go-embedded-fortran's eval)
+		if p == "github.com/go-embedded-fortran/fortran/eval" || strings.HasSuffix(p, "/notebook/fcells") {
+			t.Errorf("a package that must not carry Fortran's evaluator depends on %s", p)
+		}
 	}
 }
 

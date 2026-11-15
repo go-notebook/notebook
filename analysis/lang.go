@@ -389,10 +389,5 @@ func init() {
 		Reads:        cReads,
 		ReadsBlocked: cReadsBlocked,
 	}}}})
-	Register(fortranLang{localsLang{builtinLang{name: Fortran, cell: fortranStandalone, run: Run{
-		NotRun:       FortranNotRun,
-		Blocked:      FortranBlocked,
-		Reads:        fortranReads,
-		ReadsBlocked: fortranReadsBlocked,
-	}}}})
+	Register(fortranLang{builtinLang{name: Fortran, cell: fortranStandalone, run: Run{Runs: true}}})
 }

@@ -42,17 +42,20 @@ func TestFortranLang(t *testing.T) {
 	if err != nil || len(diags) != 0 || !slices.Equal(n.Defines, []string{"c"}) {
 		t.Errorf("Analyze: %+v %v %v", n, diags, err)
 	}
-	run := RunOf(Fortran)
-	if run.Runs || run.NotRun != FortranNotRun || run.Blocked(1) != FortranBlocked(1) ||
-		run.Reads(2) != "not run: it reads cell 2, a Fortran cell, and Fortran cells are not run yet" ||
-		run.ReadsBlocked(3) != "not run: it reads cell 3, which is blocked by a Fortran cell" {
-		t.Errorf("run %+v", run)
+	if run := RunOf(Fortran); !run.Runs {
+		t.Errorf("Fortran cells run: %+v", run)
 	}
 	if h, ok := Lookup(Fortran).(Highlighter); !ok || h.Lexer() != "fortran" {
 		t.Error("Fortran is highlighted with go-rouge's fortran lexer")
 	}
+	if rt, ok := Lookup(Fortran).(Runtime); !ok || rt.Runtime().Path != FortranPath || rt.Runtime().Module != "github.com/go-notebook/notebook" {
+		t.Error("Fortran cells run on this module's fcells")
+	}
+	// The variables live in the session, which no other language can reach: no
+	// name crosses, in either direction, and the language says so (Isolated).
 	owner := &Cell{Lang: Fortran, Funcs: []string{"f"}, Consts: []string{"T"}}
-	if Shared(owner, &Cell{Lang: Go}, "f") || Shared(owner, &Cell{Lang: Ruby}, "T") || !Shared(owner, &Cell{Lang: Ruby}, "v") {
+	if Lookup(Fortran).Crosses(owner, &Cell{Lang: Go}, "v") || !isolated(Fortran) || Shared(owner, &Cell{Lang: Go}, "v") || Shared(owner, &Cell{Lang: Ruby}, "v") ||
+		Shared(&Cell{Lang: Go}, &Cell{Lang: Fortran}, "v") || !Shared(owner, &Cell{Lang: Fortran}, "v") {
 		t.Error("crossing")
 	}
 }

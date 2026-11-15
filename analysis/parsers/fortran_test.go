@@ -51,7 +51,7 @@ func TestFortranSequence(t *testing.T) {
 		t.Fatalf("%+v %+v", c0, c1)
 	}
 	c2, s2 := analyzeFortranCell(2, "type(p) :: q\nq%i = n", s1)
-	if len(c2.Errors) != 0 || names(c2.Defines) != "q" || names(c2.Uses) != "n" { // a type reference is not in the front end's Uses yet
+	if len(c2.Errors) != 0 || names(c2.Defines) != "q" || names(c2.Uses) != "n,p" { // the type named in a declaration is a use (go-embedded-fortran v0.17.0)
 		t.Fatalf("%+v", c2)
 	}
 	// Alone, the same cell is an error: n and p are undefined.
@@ -136,9 +136,12 @@ func TestFortranRegistered(t *testing.T) {
 	if names(owner.Defines) != "k,n,s" || names(owner.Funcs) != "s" || names(owner.Consts) != "k" {
 		t.Fatalf("%+v", owner)
 	}
-	// Variables cross; procedures and parameters stay Fortran's.
+	// Nothing crosses to another language (Isolated): the variables live in the
+	// session. Between Fortran cells every name is shared.
 	goCell := &analysis.Cell{Lang: analysis.Go}
-	if !analysis.Shared(owner, goCell, "n") || analysis.Shared(owner, goCell, "s") || analysis.Shared(owner, goCell, "k") {
+	fCell := &analysis.Cell{Lang: analysis.Fortran}
+	if analysis.Shared(owner, goCell, "n") || analysis.Shared(owner, goCell, "s") || analysis.Shared(owner, goCell, "k") ||
+		!analysis.Shared(owner, fCell, "n") || !analysis.Shared(owner, fCell, "s") {
 		t.Error("crossing")
 	}
 	if len(g.Cells[1].Uses) != 1 || g.Cells[1].Uses[0] != "n" {
@@ -150,7 +153,7 @@ func TestFortranRegistered(t *testing.T) {
 		t.Error("a second definition of n is accepted")
 	}
 	run := analysis.RunOf(analysis.Fortran)
-	if run.Runs || run.NotRun != analysis.FortranNotRun || run.Blocked(1) != analysis.FortranBlocked(1) {
+	if !run.Runs {
 		t.Errorf("run %+v", run)
 	}
 	if h, ok := analysis.Lookup(analysis.Fortran).(analysis.Highlighter); !ok || h.Lexer() != "fortran" {

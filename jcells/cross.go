@@ -57,24 +57,71 @@ func GoType(v any) (string, bool) {
 	return "", false
 }
 
+// arrayLen is how many elements of a Julia array a Go value would make, 0 for a
+// value that is no slice or matrix (a scalar, a string). It is measured before
+// anything is copied: the kernel copies a slice to a []any before it checks its
+// size, 16 bytes an element.
+func arrayLen(x any) int64 {
+	switch v := x.(type) {
+	case []float64:
+		return int64(len(v))
+	case []int64:
+		return int64(len(v))
+	case []int:
+		return int64(len(v))
+	case interp.Matrix[float64]:
+		return int64(len(v.Data))
+	case interp.Matrix[int64]:
+		return int64(len(v.Data))
+	}
+	return 0
+}
+
+// widen is x as a value the kernel takes: a []int is an []int64 (int is int64 on
+// a 64-bit machine, and widens on a 32-bit one), the rest as it is.
+func widen(x any) any {
+	if v, ok := x.([]int); ok {
+		out := make([]int64, len(v))
+		for i, e := range v {
+			out[i] = int64(e)
+		}
+		return out
+	}
+	return x
+}
+
 // give hands the Go variables a cell reads to the kernel. A holder that is
 // empty (an interface holding nothing: no cell has set it) is skipped, and so is
-// a Julia cell's own variable the kernel already holds (IfAbsent).
+// a Julia cell's own variable the kernel already holds (IfAbsent). The arrays
+// given are bounded: none may have more than the VM's MaxMemoryElems elements,
+// and all of them together stay within the cell's memory budget (MaxAlloc, in
+// elements), checked before any is copied. A Go copy of a slice is 16 bytes an
+// element, so K inputs of the per-array cap would cost K times 256 MiB outside
+// the budget.
 func (s *Session) give(in []Var) error {
+	budget, perArray := s.options().MaxAlloc, int64(s.k.VM().MaxMemoryElems)
+	var total int64
 	for _, v := range in {
 		dst := reflect.ValueOf(v.Ptr).Elem()
 		if dst.Kind() == reflect.Interface && dst.IsNil() {
 			continue
 		}
-		if v.IfAbsent {
-			if _, ok, err := s.k.Get(v.Name); ok || err != nil {
-				continue // held (a value of a type that does not cross is held too)
-			}
+		if v.IfAbsent && s.held[v.Name] {
+			continue // the kernel holds it (a value of a type that does not cross too)
 		}
-		if err := s.k.Set(v.Name, dst.Interface()); err != nil {
-			return cellError(fmt.Sprintf("the Julia cell reads %s, a Go %s that Julia cannot take: %v; "+
-				"Julia takes int, int64, float64, bool, string, []float64, []int64 and interp.Matrix of float64 or int64", v.Name, dst.Type(), err))
+		x := dst.Interface()
+		n := arrayLen(x)
+		if n > perArray {
+			return cellError(fmt.Sprintf("the Julia cell reads %s, a Go %T of %d elements; an array has at most %d elements here", v.Name, x, n, perArray))
 		}
+		if total += n; budget > 0 && total > budget {
+			return cellError(fmt.Sprintf("the Julia cell reads more than its memory budget of %d array elements: %s brings the total to %d", budget, v.Name, total))
+		}
+		if err := s.k.Set(v.Name, widen(x)); err != nil {
+			return cellError(fmt.Sprintf("the Julia cell reads %s, a Go %T that Julia cannot take: %v; "+
+				"Julia takes int, int64, float64, bool, string, []int, []int64, []float64 and interp.Matrix of float64 or int64", v.Name, x, err))
+		}
+		s.held[v.Name] = true
 	}
 	return nil
 }
@@ -100,11 +147,13 @@ func (s *Session) take(c Cell) {
 				why = ce.Julia
 			}
 			note(v.Name, Unsupported+why)
+			s.held[v.Name] = true
 			continue
 		}
 		if !ok {
 			continue
 		}
+		s.held[v.Name] = true
 		typ, _ := GoType(val) // every value Get answers is of the table
 		note(v.Name, typ)
 		if dst, x := reflect.ValueOf(v.Ptr).Elem(), reflect.ValueOf(val); x.Type().AssignableTo(dst.Type()) {

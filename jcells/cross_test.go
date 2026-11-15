@@ -2,12 +2,15 @@ package jcells
 
 import (
 	"context"
+	"math"
+	goruntime "runtime"
 	"strings"
 	"testing"
 
 	"github.com/go-embedded-julia/julia/interp"
 
 	"github.com/go-notebook/notebook/gen"
+	"github.com/go-notebook/notebook/runtime"
 )
 
 func notes() (map[string]string, func(string, string)) {
@@ -129,7 +132,7 @@ func TestGoValueJuliaCannotTake(t *testing.T) {
 	ss := []string{"a"}
 	_, err := s.Eval(context.Background(), Cell{Source: "length(bad_s)", In: []Var{{Name: "bad_s", Ptr: &ss}}})
 	msg := cellErr(t, err)
-	for _, want := range []string{"the Julia cell reads bad_s, a Go []string that Julia cannot take", "[]string", "Julia takes int, int64, float64, bool, string, []float64, []int64 and interp.Matrix"} {
+	for _, want := range []string{"the Julia cell reads bad_s, a Go []string that Julia cannot take", "[]string", "Julia takes int, int64, float64, bool, string, []int, []int64, []float64 and interp.Matrix"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message %q lacks %q", msg, want)
 		}
@@ -144,7 +147,10 @@ func TestGoValueJuliaCannotTake(t *testing.T) {
 // kernel lacks it (a new worker), never over what the kernel holds.
 func TestIfAbsent(t *testing.T) {
 	s := sharedSession(t)
-	eval(t, s, "ia_x = 1")
+	var kept any
+	if _, err := s.Eval(context.Background(), Cell{Source: "ia_x = 1", Out: []Var{{Name: "ia_x", Ptr: &kept}}}); err != nil {
+		t.Fatal(err)
+	}
 	var held any = int64(100)
 	out, err := s.Eval(context.Background(), Cell{Source: "ia_x", In: []Var{{Name: "ia_x", Ptr: &held, IfAbsent: true}}})
 	if err != nil || out.Stdout != "1\n" {
@@ -187,5 +193,140 @@ func TestGoType(t *testing.T) {
 	}
 	if _, ok := GoType(map[string]int{}); ok {
 		t.Error("a map has a type")
+	}
+}
+
+// Floats cross with every bit: a NaN payload, -0.0 and the infinities, in both
+// directions, scalars and in vectors.
+func TestFloatsCrossBitForBit(t *testing.T) {
+	s := sharedSession(t)
+	nan := math.Float64frombits(0x7ff8000000000123)
+	snan := math.Float64frombits(0x7ff0000000000001)
+	negz := math.Copysign(0, -1)
+	vals := []float64{nan, snan, negz, math.Inf(1), math.Inf(-1), 1.5}
+	var scalar, vec any = nan, vals
+	_, err := s.Eval(context.Background(), Cell{
+		Source: "bf_s = g_nan\nbf_v = g_vec\nbf_back = [reinterpret(UInt64, x) for x in g_vec]\nbf_nan = reinterpret(Float64, 0x7ff8000000000123)\nbf_negz = -0.0\nbf_inf = -Inf",
+		In:     []Var{{Name: "g_nan", Ptr: &scalar}, {Name: "g_vec", Ptr: &vec}},
+		Out:    nil,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s2, v2, nan2, negz2, inf2 any
+	_, err = s.Eval(context.Background(), Cell{Source: "1", Out: []Var{{Name: "bf_s", Ptr: &s2}, {Name: "bf_v", Ptr: &v2}, {Name: "bf_nan", Ptr: &nan2}, {Name: "bf_negz", Ptr: &negz2}, {Name: "bf_inf", Ptr: &inf2}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bits := math.Float64bits
+	if bits(s2.(float64)) != bits(nan) || bits(nan2.(float64)) != 0x7ff8000000000123 || bits(negz2.(float64)) != bits(negz) || !math.IsInf(inf2.(float64), -1) {
+		t.Fatalf("scalars: %x %x %x %v", bits(s2.(float64)), bits(nan2.(float64)), bits(negz2.(float64)), inf2)
+	}
+	got := v2.([]float64)
+	for i := range vals {
+		if bits(got[i]) != bits(vals[i]) {
+			t.Errorf("vector[%d]: %x, want %x", i, bits(got[i]), bits(vals[i]))
+		}
+	}
+}
+
+// Empty vectors and matrices with a zero dimension cross, both ways.
+func TestEmptyArraysCross(t *testing.T) {
+	s := sharedSession(t)
+	var ev, em, m03, mi any = []float64{}, []int64{}, interp.Matrix[float64]{Rows: 0, Cols: 3}, interp.Matrix[int64]{Rows: 1, Cols: 2, Data: []int64{7, 8}}
+	out, err := s.Eval(context.Background(), Cell{Source: "(length(e_v), length(e_m), size(e_03), e_mi[1, 2])", In: []Var{{Name: "e_v", Ptr: &ev}, {Name: "e_m", Ptr: &em}, {Name: "e_03", Ptr: &m03}, {Name: "e_mi", Ptr: &mi}}})
+	if err != nil || out.Stdout != "(0, 0, (0, 3), 8)\n" {
+		t.Fatalf("%q %v", out.Stdout, err)
+	}
+	var v, m, n30 any
+	_, err = s.Eval(context.Background(), Cell{Source: "e_a = Float64[]\ne_b = zeros(Int64, 0, 3)\ne_c = zeros(3, 0)", Out: []Var{{Name: "e_a", Ptr: &v}, {Name: "e_b", Ptr: &m}, {Name: "e_c", Ptr: &n30}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := v.([]float64); !ok || len(got) != 0 {
+		t.Fatalf("empty vector: %#v", v)
+	}
+	if got, ok := m.(interp.Matrix[int64]); !ok || got.Rows != 0 || got.Cols != 3 || len(got.Data) != 0 {
+		t.Fatalf("0x3 matrix: %#v", m)
+	}
+	// A matrix with zero columns does not come out: go-embedded-julia's Get
+	// refuses a 3 by 0 matrix (it checks the first dimension against the empty
+	// memory), so the variable stays in Julia. Pinned so that a fix shows up.
+	if n30 != nil {
+		t.Fatalf("a 3x0 matrix crosses now (go-embedded-julia fixed it): %#v; remove this pin", n30)
+	}
+}
+
+// A string that is not UTF-8 crosses byte for byte, both ways.
+func TestInvalidUTF8Crosses(t *testing.T) {
+	s := sharedSession(t)
+	var in any = "\xff\xfeab"
+	out, err := s.Eval(context.Background(), Cell{Source: "(sizeof(u_s), codeunits(u_s)[1], isvalid(u_s))", In: []Var{{Name: "u_s", Ptr: &in}}})
+	if err != nil || out.Stdout != "(4, 0xff, false)\n" {
+		t.Fatalf("%q %v", out.Stdout, err)
+	}
+	var back any
+	if _, err := s.Eval(context.Background(), Cell{Source: "u_t = String(UInt8[0xc3, 0x28, 0xff])", Out: []Var{{Name: "u_t", Ptr: &back}}}); err != nil {
+		t.Fatal(err)
+	}
+	if back != "\xc3\x28\xff" {
+		t.Fatalf("%q", back)
+	}
+}
+
+// []int and int go in as Int64, a []int as an Int64 vector.
+func TestIntSlicesCrossAsInt64(t *testing.T) {
+	s := sharedSession(t)
+	var xs any = []int{1, 2, 3}
+	out, err := s.Eval(context.Background(), Cell{Source: "(typeof(i_xs), sum(i_xs))", In: []Var{{Name: "i_xs", Ptr: &xs}}})
+	if err != nil || out.Stdout != "(Vector{Int64}, 6)\n" {
+		t.Fatalf("%q %v", out.Stdout, err)
+	}
+}
+
+// The arrays a cell reads are bounded before they are copied: the kernel makes
+// a []any of a slice, 16 bytes an element, before it checks the size, so a
+// slice over the per-array cap is refused here, and the inputs together stay
+// within the cell's memory budget.
+func TestInputArraysAreBounded(t *testing.T) {
+	s := bounded(t, runtime.RLimits{MaxAlloc: 16 * 1000}) // 1000 elements
+	var big any = make([]float64, 1001)
+	_, err := s.Eval(context.Background(), Cell{Source: "length(b_x)", In: []Var{{Name: "b_x", Ptr: &big}}})
+	if msg := cellErr(t, err); !strings.Contains(msg, "more than its memory budget of 1000 array elements: b_x brings the total to 1001") {
+		t.Fatalf("message %q", msg)
+	}
+	// 600 + 600 over 1000, each alone within it
+	var a, b any = make([]int64, 600), interp.Matrix[float64]{Rows: 20, Cols: 30, Data: make([]float64, 600)}
+	_, err = s.Eval(context.Background(), Cell{Source: "1", In: []Var{{Name: "b_a", Ptr: &a}, {Name: "b_b", Ptr: &b}}})
+	if msg := cellErr(t, err); !strings.Contains(msg, "b_b brings the total to 1200") {
+		t.Fatalf("message %q", msg)
+	}
+	// scalars and strings are not arrays: not counted
+	var str any = strings.Repeat("x", 100000)
+	if out, err := s.Eval(context.Background(), Cell{Source: "sizeof(b_s)", In: []Var{{Name: "b_s", Ptr: &str}}}); err != nil || out.Stdout != "100000\n" {
+		t.Fatalf("%q %v", out.Stdout, err)
+	}
+	// the session goes on
+	if out := eval(t, s, "1 + 1"); out.Stdout != "2\n" {
+		t.Fatalf("%+v", out)
+	}
+}
+
+// One array over the VM's cap (2^24 elements) is refused with this package's
+// message, without the copy: the heap the refusal allocates stays far under the
+// 16 bytes an element the kernel's own copy would take (256 MiB here).
+func TestOneInputArrayOverTheCapIsRefusedWithoutCopying(t *testing.T) {
+	s := bounded(t, runtime.RLimits{MaxAlloc: runtime.Unbounded})
+	big := make([]float64, (1<<24)+1)
+	var v any = big
+	var before, after goruntime.MemStats
+	goruntime.ReadMemStats(&before)
+	_, err := s.Eval(context.Background(), Cell{Source: "length(o_x)", In: []Var{{Name: "o_x", Ptr: &v}}})
+	goruntime.ReadMemStats(&after)
+	if alloc := after.TotalAlloc - before.TotalAlloc; alloc > 64<<20 {
+		t.Fatalf("the refusal allocated %d MiB", alloc>>20)
+	}
+	if msg := cellErr(t, err); !strings.Contains(msg, "the Julia cell reads o_x, a Go []float64 of 16777217 elements; an array has at most 16777216 elements here") {
+		t.Fatalf("message %q", msg)
 	}
 }

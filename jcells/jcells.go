@@ -97,6 +97,11 @@ type Session struct {
 	k  *interp.Kernel
 	// startErr is why the kernel could not start, kept for the session.
 	startErr error
+	// held are the variables the kernel's Main holds that this session put there
+	// or read out (the kernel has no cheap test of presence: Get copies the
+	// array): a Julia cell's own variables, so that a new worker, whose session
+	// is new and whose kernel is empty, gets them back from their Go holders.
+	held map[string]bool
 }
 
 // fetchKernel boots a kernel from the pinned image: interp.FetchKernel, a seam
@@ -117,7 +122,7 @@ func New() *Session { return NewWith(runtime.ParseRLimits(os.Getenv(runtime.RLim
 // tables a cell allocates, counted at 16 bytes each (elemBytes): a floor of the
 // memory, since boxed values cost more and strings are not counted, so it is
 // not a bound on the heap; no array may have more than 2^24 elements either.
-func NewWith(l runtime.RLimits) *Session { return &Session{l: l.Resolve()} }
+func NewWith(l runtime.RLimits) *Session { return &Session{l: l.Resolve(), held: map[string]bool{}} }
 
 // options are the budgets of a cell for the kernel: a negative field is no
 // bound there, as here.
@@ -218,6 +223,7 @@ func (s *Session) Close() {
 	if s.k != nil {
 		s.k.Close()
 		s.k = nil
+		s.held = map[string]bool{}
 	}
 }
 

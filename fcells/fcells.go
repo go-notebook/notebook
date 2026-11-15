@@ -99,7 +99,7 @@ func NewWith(o Options) *Session {
 	}
 	// the analyser's limits on a cell's source are its own defaults: a notebook
 	// may come from anyone
-	return &Session{opt: o, exec: eval.NewSession(eval.SessionOptions{MaxSteps: o.MaxSteps, MaxAlloc: o.MaxAlloc}).Run}
+	return &Session{opt: o, exec: eval.NewSession(eval.SessionOptions{MaxSteps: o.MaxSteps, MaxAlloc: o.MaxAlloc, MaxOutput: int64(o.MaxOutput)}).Run}
 }
 
 // Run runs a cell. What it prints goes to the worker's standard output, what it

@@ -247,3 +247,17 @@ func TestAllocBombIsRefused(t *testing.T) {
 		t.Fatalf("defaults: %+v", o)
 	}
 }
+
+// A cell that prints an array too big for its budget is not refused when the
+// output cap would cut it: the evaluator builds only the values that could be
+// printed within MaxOutput.
+func TestPrintOfABigArrayStopsAtTheCap(t *testing.T) {
+	s := NewWith(Options{MaxAlloc: 100 << 20, MaxOutput: 1000})
+	out, err := s.Eval(context.Background(), Cell{Source: "integer :: a(2**22)\na = 7\nprint *, a\n"})
+	if err != nil || out.Stdout == "" {
+		t.Fatalf("%q, %v", out.Stdout, err)
+	}
+	if len(out.Stdout) > 2000 {
+		t.Fatalf("%d bytes kept of a cap of 1000", len(out.Stdout))
+	}
+}

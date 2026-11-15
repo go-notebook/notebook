@@ -5,8 +5,8 @@ github.com/go-bignum/bigfloat v0.2.0 h1:9sDb0Trg9ikAoSvLtjAXBLERNX2wYkbHi/w3FSqj
 github.com/go-bignum/bigfloat v0.2.0/go.mod h1:YVHspp0DKscpWZ6NK+rSCXxCfVDldNNoAN2JYQ8FInk=
 github.com/go-embedded-c/c v0.2.1 h1:LCNcLHJ1T3Ry0adJwO+jK9RnoFwrMd6yR/0bb0muHIc=
 github.com/go-embedded-c/c v0.2.1/go.mod h1:MhuXRqUtTZTUnm/3fVjho1HiL6QCFylChzOQ+Tu9eiQ=
-github.com/go-embedded-fortran/fortran v0.23.0 h1:z7v84SkidUt0/Q54aa40OroZGtAnlG3zRrJDSBRelsg=
-github.com/go-embedded-fortran/fortran v0.23.0/go.mod h1:UUtUFdyuO7fWnDoBjbjGZNGXg7bH2fW2DLp1D4QOAkg=
+github.com/go-embedded-fortran/fortran v0.24.0 h1:+BqeYzBEHbeuT6z22p3ep8hUytk6VG+ItnKEhqMYwXc=
+github.com/go-embedded-fortran/fortran v0.24.0/go.mod h1:UUtUFdyuO7fWnDoBjbjGZNGXg7bH2fW2DLp1D4QOAkg=
 github.com/go-embedded-julia/julia v0.17.0 h1:lCsAJ6bsvfqC1OGM3d5LUGbZlpdvDq+MoXFv/Bo+VVo=
 github.com/go-embedded-julia/julia v0.17.0/go.mod h1:WkSyHRvyKTls2QhqjwORXAcDOJCeoO6zIx2wedBPLpk=
 github.com/go-embedded-r/r v0.17.1 h1:raX7Ac9Bvni/pw+A+7lWFO1UkJqm66d4f26uh57DH2w=

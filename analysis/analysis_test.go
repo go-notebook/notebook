@@ -175,3 +175,15 @@ func TestGraphErrors(t *testing.T) {
 		t.Error("syntax error not carried to the graph")
 	}
 }
+
+// The parser abandons a file nested deeper than its limit with no
+// declaration at all; the cell must get a syntax error, not a panic
+// (go-notebook/notebook#51).
+func TestAnalyzeStmtsParserGivesUp(t *testing.T) {
+	for _, open := range []string{"(", "{", "[]"} {
+		g := AnalyzeSources([]Source{{Lang: Go, Source: strings.Repeat(open, 200000)}})
+		if len(g.Cells) != 1 || len(g.Cells[0].Errors) == 0 {
+			t.Errorf("%q: want a syntax error, got %+v", open, g.Cells)
+		}
+	}
+}

@@ -36,7 +36,10 @@ func sharedSession(t *testing.T) *Session {
 		t.Skip("boots the Julia image")
 	}
 	sharedOnce.Do(func() {
-		shared = New()
+		// not the default 30 s: the first use of a Julia construct (a tuple, a
+		// comprehension, a MethodError) takes seconds natively and over 30 s under
+		// -race on a CI runner, and these tests are about values, not time
+		shared = NewWith(runtime.RLimits{Timeout: 5 * time.Minute})
 		_, sharedErr = shared.Eval(context.Background(), Cell{Source: "1"})
 	})
 	needKernel(t, sharedErr)

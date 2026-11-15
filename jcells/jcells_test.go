@@ -425,27 +425,34 @@ func TestOneArrayIsCapped(t *testing.T) {
 func TestAllocBomb(t *testing.T) {
 	s := bounded(t, runtime.RLimits{})
 	base := heap()
-	stop, peak := make(chan struct{}), make(chan uint64)
+	stop, peak := make(chan struct{}), make(chan [2]uint64)
 	go func() {
-		var top uint64
+		var top, n uint64
 		for {
 			select {
 			case <-stop:
-				peak <- top
+				peak <- [2]uint64{top, n}
 				return
 			case <-time.After(250 * time.Millisecond): // ReadMemStats stops the world: not often, under -race
-				top = max(top, heap())
+				top, n = max(top, heap()), n+1
 			}
 		}
 	}()
 	_, err := s.Eval(context.Background(), Cell{Source: "xs = []\nfor i in 1:100\n    push!(xs, Array{Float64}(undef, 10^7))\nend"})
+	// The bomb may be over before the first tick: one sample now, while xs, a
+	// global of the kernel, still holds the arrays the cell made.
+	final := heap()
 	close(stop)
-	top := <-peak
-	if msg := cellErr(t, err); !strings.HasPrefix(msg, "stopped: the Julia cell went over its memory limit: the cell allocated more than 33554432 elements") {
-		t.Fatalf("message %q", msg)
+	p := <-peak
+	top, samples := max(p[0], final), p[1]+1
+	if samples == 0 || top == 0 {
+		t.Fatal("no heap sample was taken")
 	}
 	if limit := uint64(runtime.DefaultRLimits.MaxAlloc) + 512<<20; top > base+limit {
 		t.Fatalf("the heap reached %d MiB over its start, the bound is %d MiB", (top-base)>>20, limit>>20)
+	}
+	if msg := cellErr(t, err); !strings.HasPrefix(msg, "stopped: the Julia cell went over its memory limit: the cell allocated more than 33554432 elements") {
+		t.Fatalf("message %q", msg)
 	}
 }
 

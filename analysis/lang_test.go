@@ -144,8 +144,8 @@ func TestRunOf(t *testing.T) {
 }
 
 func TestCapabilities(t *testing.T) {
-	if !LearnsTypes("ruby") || LearnsTypes("go") || LearnsTypes("julia") || LearnsTypes("nonesuch") {
-		t.Error("only Ruby learns its types")
+	if !LearnsTypes("ruby") || !LearnsTypes("julia") || LearnsTypes("go") || LearnsTypes("nonesuch") {
+		t.Error("only Ruby and Julia learn their types")
 	}
 	if _, ok := Lookup("ruby").(Runtime); !ok {
 		t.Error("Ruby links a package")

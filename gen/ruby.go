@@ -139,7 +139,11 @@ func (g *generator) resolveType(t string) string {
 // variable whose type is not known, or a variable of a deferred cell.
 func (g *generator) waits(i int) bool {
 	for _, v := range g.inputs(i) {
-		if v.Ruby && g.unknown[v.Name] {
+		if t, ok := g.unsupported[v.Name]; ok && v.Julia {
+			g.prog.Deferred[i] = fmt.Sprintf("not run: it reads %s, a Julia variable of type %s, which does not cross to Go (Julia's Int64, Float64, Bool, String, and Vector and Matrix of Float64 or Int64 do)", v.Name, t)
+			return true
+		}
+		if (v.Ruby || v.Julia) && g.unknown[v.Name] {
 			g.prog.Deferred[i] = fmt.Sprintf("not run yet: it reads %s, whose Go type is known once cell %d has run", v.Name, v.Cell)
 			return true
 		}

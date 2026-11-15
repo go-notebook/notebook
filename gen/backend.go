@@ -62,6 +62,10 @@ func (c *Context) Declare(v Var) { c.g.prog.Vars = append(c.g.prog.Vars, v) }
 // cells that read it are deferred.
 func (c *Context) Unknown(name string) { c.g.unknown[name] = true }
 
+// Unsupported records that Julia variable name has a type, julia, that does
+// not cross to Go: the Go cells that read it are deferred, saying so.
+func (c *Context) Unsupported(name, julia string) { c.g.unsupported[name] = julia }
+
 // ResolveType writes a Go type, in the syntax of Options.RubyTypes
 // ("*{github.com/go-plot/plot}.Figure"), with the program's import names; ""
 // when it names a package the program cannot see.

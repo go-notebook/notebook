@@ -210,28 +210,27 @@ func TestJuliaGraph(t *testing.T) {
 	g := AnalyzeSources([]Source{
 		{Lang: Julia, Source: "x = 1\nf(y) = y"},
 		{Lang: Julia, Source: "for i in 1:3\n  x = x + i\nend"}, // assigns cell 0's global
-		{Lang: Go, Source: "z := x"},                            // reads a Julia name: not shared
+		{Lang: Go, Source: "z := x"},                            // reads the Julia variable
 		{Lang: Ruby, Source: "w = f(1)"},                        // f is a Julia function: not shared
-		{Lang: Julia, Source: "v = z + w"},                      // reads a Go and a Ruby name: not shared
+		{Lang: Julia, Source: "v = z + w"},                      // reads the Go and Ruby variables
 	})
 	if len(g.Errors) != 1 || g.Errors[0].Cell != 1 || !strings.Contains(g.Errors[0].Msg, "cannot assign to x, which cell 0 defines") {
 		t.Errorf("errors %+v", g.Errors)
 	}
-	// Julia is Isolated, as R is: its variables live in the kernel's Main, and
-	// no cell of another language has an edge to or from a Julia cell.
-	if len(g.Deps[2]) != 0 || len(g.Deps[3]) != 0 || len(g.Deps[4]) != 0 || !slices.Equal(g.Deps[1], []int{0}) {
+	// Julia's variables cross, as Ruby's do, and its functions do not.
+	if !slices.Equal(g.Deps[2], []int{0}) || len(g.Deps[3]) != 0 || !slices.Equal(g.Deps[4], []int{2, 3}) || !slices.Equal(g.Deps[1], []int{0}) {
 		t.Errorf("deps %v", g.Deps)
-	}
-	if Lookup(Julia).Crosses(g.Cells[0], g.Cells[1], "x") {
-		t.Error("Julia crosses")
 	}
 	if !RunOf(Julia).Runs {
 		t.Error("Julia cells run")
 	}
-	// Not even a variable named like nothing in Go crosses.
+	// A Julia variable named like a Go keyword stays out of Go's sight.
 	g = AnalyzeSources([]Source{{Lang: Julia, Source: "type = 1"}, {Lang: Go, Source: "_ = 1"}})
-	if Shared(g.Cells[0], &Cell{Lang: Ruby}, "type") || Shared(g.Cells[0], g.Cells[1], "type") {
-		t.Error("a Julia variable crosses")
+	if !Shared(g.Cells[0], &Cell{Lang: Ruby}, "type") || Shared(g.Cells[0], g.Cells[1], "type") {
+		t.Error("type crosses to Go")
+	}
+	if _, isolated := Lookup(Julia).(Isolated); isolated {
+		t.Error("Julia is isolated")
 	}
 	if m := Lookup(Julia).(Runtime).Runtime(); m.Path != JuliaPath || m.Module != JuliaModule {
 		t.Errorf("runtime %+v", m)

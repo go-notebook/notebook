@@ -63,7 +63,8 @@ func NewWith(l runtime.RLimits) *Session { return NewWithDepth(l, 0) }
 // "expressions" option, for an embedder whose stack is smaller than a process's
 // (WebAssembly in a browser: the engine's own recursion overflows the host's
 // call stack before go-embedded-r's default of 5000 is reached). Zero is that
-// default.
+// default: since go-embedded-r v0.17.1, 300 under GOOS=js and wasip1 and 5000
+// natively.
 func NewWithDepth(l runtime.RLimits, maxDepth int) *Session {
 	l = l.Resolve()
 	o := newOptions(l)

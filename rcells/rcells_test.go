@@ -365,6 +365,20 @@ func TestEval(t *testing.T) {
 	}
 }
 
+// Since go-embedded-r v0.17.1 one depth counter bounds the native walkers as
+// well as the evaluator: a 50000-deep list is an R error under identical, not a
+// lost stack, and the session is kept.
+func TestDeepDataIsAnRError(t *testing.T) {
+	s := NewWith(sloppy)
+	r := run(t, s, "x <- list(); for (i in 1:50000) x <- list(x); identical(x, x)\n")
+	if !strings.HasPrefix(r.failure, "Error") || !strings.Contains(r.failure, "C stack usage") {
+		t.Errorf("deep identical: %+v", r)
+	}
+	if r := run(t, s, "1 + 1"); r.stdout != "[1] 2\n" || r.failure != "" {
+		t.Errorf("the session after the bound: %+v", r)
+	}
+}
+
 // NewWithDepth bounds the nesting of evaluations: a recursion that the default
 // allows is refused with R's own message under a smaller bound, and the session
 // is kept.

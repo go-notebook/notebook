@@ -187,14 +187,77 @@ func TestFailures(t *testing.T) {
 }
 
 func TestCapped(t *testing.T) {
-	c := &capped{max: 5}
+	c := &capped{room: &outRoom{left: 5, max: 5}}
 	c.Write([]byte("ab"))
 	c.Write([]byte("cdefg"))
 	c.Write([]byte("h"))
-	if string(c.b) != "abcde" || c.dropped != 3 || !strings.Contains(c.text(), "[output truncated: 3 bytes dropped after the first 5]") {
+	if string(c.b) != "abcde" || c.dropped != 3 || !strings.Contains(c.text(), "[output truncated: 3 bytes dropped after the first 5 in all]") {
 		t.Fatalf("%q %d %q", c.b, c.dropped, c.text())
 	}
-	if c := (&capped{max: 5}); func() string { c.Write([]byte("x")); return c.text() }() != "x" {
+	if c := (&capped{room: &outRoom{left: 5, max: 5}}); func() string { c.Write([]byte("x")); return c.text() }() != "x" {
 		t.Fatal("a short output is as it is")
+	}
+}
+
+// Standard output and standard error share one cap: a cell that alternates
+// them does not get twice the bound.
+func TestOneCapForBothStreams(t *testing.T) {
+	room := &outRoom{left: 10, max: 10}
+	out, errOut := &capped{room: room}, &capped{room: room}
+	out.Write([]byte("123456"))
+	errOut.Write([]byte("abcdef"))
+	out.Write([]byte("xyz"))
+	if string(out.b)+string(errOut.b) != "123456abcd" || out.dropped != 3 || errOut.dropped != 2 {
+		t.Fatalf("%q %q %d %d", out.b, errOut.b, out.dropped, errOut.dropped)
+	}
+}
+
+// The budget counts what a session holds, whatever the size of each
+// allocation: two arrays of 2^25 int64 (256 MiB each) under 512 MiB, 100000
+// objects of a type with a 64000-byte array component (6.4 GB, no allocation
+// over 64 KiB) and objects with a 1 MiB character component are refused, each
+// as the cell's own failure, before they are allocated, and the session runs the
+// next cell. A check reduced to the size of one allocation lets all three through.
+func TestAllocBombIsRefused(t *testing.T) {
+	for name, src := range map[string]string{
+		"accumulation":        "integer, allocatable :: a(:), b(:)\nallocate(a(2**25))\nallocate(b(2**25))\n",
+		"array component":     "type :: t\nreal(8) :: x(8000)\nend type\ntype(t) :: a(100000)\n",
+		"character component": "type :: u\ncharacter(len=1048576) :: c\nend type\ntype(u) :: a(2000)\n",
+	} {
+		s := NewWith(Options{MaxAlloc: 512 << 20})
+		_, err := s.Eval(context.Background(), Cell{Source: src})
+		if err == nil || !strings.Contains(err.Error(), "memory limit exceeded") {
+			t.Fatalf("%s: %v", name, err)
+		}
+		out := eval1(t, s, "print *, 6 * 7\n")
+		if strings.TrimSpace(out.Stdout) != "42" {
+			t.Fatalf("%s: %q", name, out.Stdout)
+		}
+	}
+	s := NewWith(Options{MaxAlloc: 256 << 20})
+	_, err := s.Eval(context.Background(), Cell{Source: "integer, allocatable :: a(:), b(:)\nallocate(a(2**27))\nallocate(b(2**27))\n"})
+	if err == nil || !strings.Contains(err.Error(), "memory limit exceeded") {
+		t.Fatalf("%v", err)
+	}
+	out := eval1(t, s, "print *, 6 * 7\n")
+	if strings.TrimSpace(out.Stdout) != "42" {
+		t.Fatalf("%q", out.Stdout)
+	}
+	if o := NewWith(Options{}).opt; o.MaxAlloc != DefaultMaxAlloc || NewWith(Options{MaxAlloc: -1}).opt.MaxAlloc != 0 {
+		t.Fatalf("defaults: %+v", o)
+	}
+}
+
+// A cell that prints an array too big for its budget is not refused when the
+// output cap would cut it: the evaluator builds only the values that could be
+// printed within MaxOutput.
+func TestPrintOfABigArrayStopsAtTheCap(t *testing.T) {
+	s := NewWith(Options{MaxAlloc: 100 << 20, MaxOutput: 1000})
+	out, err := s.Eval(context.Background(), Cell{Source: "integer :: a(2**22)\na = 7\nprint *, a\n"})
+	if err != nil || out.Stdout == "" {
+		t.Fatalf("%q, %v", out.Stdout, err)
+	}
+	if len(out.Stdout) > 2000 {
+		t.Fatalf("%d bytes kept of a cap of 1000", len(out.Stdout))
 	}
 }

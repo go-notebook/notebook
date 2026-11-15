@@ -161,7 +161,14 @@ func (s *Session) Eval(ctx context.Context, c Cell) (Output, error) {
 		k, err := fetchKernel(fctx, Version, pinned)
 		cancel()
 		if err != nil {
-			s.startErr = cellError("the Julia kernel could not start: " + err.Error())
+			failure := cellError("the Julia kernel could not start: " + err.Error())
+			if ctx.Err() != nil {
+				// the caller gave up (its context is done): that is not why
+				// the kernel cannot start, so the next cell tries again
+				return Output{}, failure
+			}
+			// a fetch or load failure, or the fetch's own deadline: the session's
+			s.startErr = failure
 		}
 		s.k = k
 	}

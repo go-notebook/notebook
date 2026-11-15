@@ -145,6 +145,28 @@ func TestImageIsPinned(t *testing.T) {
 		t.Fatalf("%d fetches, then %v", calls, err)
 	}
 	s.Close() // nothing to close
+
+	// The caller's own cancellation is not a failure to start: the next cell
+	// tries again. The fetch's own deadline is one, and is kept.
+	calls = 0
+	fetchKernel = func(ctx context.Context, _ string, _ [32]byte) (*interp.Kernel, error) {
+		calls++
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	c := New()
+	cctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err = c.Eval(cctx, Cell{Source: "1"}); err == nil || c.startErr != nil || calls != 1 {
+		t.Fatalf("a cancelled caller: %v, kept %v", err, c.startErr)
+	}
+	oldTimeout := fetchTimeout
+	fetchTimeout = 10 * time.Millisecond
+	t.Cleanup(func() { fetchTimeout = oldTimeout })
+	// the next cell tries again, and now the fetch's own deadline stops it
+	if _, err = c.Eval(context.Background(), Cell{Source: "1"}); calls != 2 || err == nil || c.startErr == nil || !strings.Contains(err.Error(), "deadline exceeded") {
+		t.Fatalf("the fetch's deadline: %v", err)
+	}
 }
 
 // A different image is refused before it is loaded: a cached file that is not

@@ -59,8 +59,8 @@ func GoType(v any) (string, bool) {
 
 // arrayLen is how many elements of a Julia array a Go value would make, 0 for a
 // value that is no slice or matrix (a scalar, a string). It is measured before
-// anything is copied: the kernel copies a slice to a []any before it checks its
-// size, 16 bytes an element.
+// anything is copied, for the total of a cell's inputs, which the kernel's Set
+// (per array, since v0.18.0 before it converts) does not bound.
 func arrayLen(x any) int64 {
 	switch v := x.(type) {
 	case []float64:
@@ -106,8 +106,10 @@ func (s *Session) give(in []Var) error {
 		if dst.Kind() == reflect.Interface && dst.IsNil() {
 			continue
 		}
-		if v.IfAbsent && s.held[v.Name] {
-			continue // the kernel holds it (a value of a type that does not cross too)
+		// the kernel holds it (a value of a type that does not cross too). An error
+		// (busy, closed) is not an answer: Set below fails with the same one.
+		if has, err := s.k.Has(v.Name); v.IfAbsent && err == nil && has {
+			continue
 		}
 		x := dst.Interface()
 		n := arrayLen(x)
@@ -121,7 +123,6 @@ func (s *Session) give(in []Var) error {
 			return cellError(fmt.Sprintf("the Julia cell reads %s, a Go %T that Julia cannot take: %v; "+
 				"Julia takes int, int64, float64, bool, string, []int, []int64, []float64 and interp.Matrix of float64 or int64", v.Name, x, err))
 		}
-		s.held[v.Name] = true
 	}
 	return nil
 }
@@ -147,13 +148,11 @@ func (s *Session) take(c Cell) {
 				why = ce.Julia
 			}
 			note(v.Name, Unsupported+why)
-			s.held[v.Name] = true
 			continue
 		}
 		if !ok {
 			continue
 		}
-		s.held[v.Name] = true
 		typ, _ := GoType(val) // every value Get answers is of the table
 		note(v.Name, typ)
 		if dst, x := reflect.ValueOf(v.Ptr).Elem(), reflect.ValueOf(val); x.Type().AssignableTo(dst.Type()) {

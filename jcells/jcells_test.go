@@ -106,10 +106,10 @@ func TestImageIsPinned(t *testing.T) {
 	if err != nil || d != pinned {
 		t.Fatalf("Digest %q does not parse: %v", Digest, err)
 	}
-	if Version != "v0.17.0" || Digest != "d243d2b748afb7d331227195d835357b6502184bedcdc4bcc296854276c2f6ec" {
+	if Version != "v0.18.0" || Digest != "b2f03e85c0beece0dee586849f581b5ced5a01008265f9c60ac323f229b7d523" {
 		t.Fatalf("the pinned image changed: %s %s (moving it is a decision: go.mod, images.sum, this test)", Version, Digest)
 	}
-	if want := "julia-image-v0.17.0.bin"; interp.ImageAssetName(Version) != want {
+	if want := "julia-image-v0.18.0.bin"; interp.ImageAssetName(Version) != want {
 		t.Fatalf("asset %s", interp.ImageAssetName(Version))
 	}
 	old := fetchKernel
@@ -510,17 +510,20 @@ func TestMethodErrorText(t *testing.T) {
 	}
 }
 
-// Known gaps of the Base image, which a cell sees as "not ported yet" errors
-// (go-embedded-julia#67, #65: ASCII uppercase and Int matrix products work). They are pinned so that a fix shows up: when one
-// passes, the README's limitation goes.
-func TestKnownGapsOfTheImage(t *testing.T) {
+// What the Base image lacked before v0.18.0 works now: a Float64 matrix-vector
+// product (go-blas, #67), and case conversion and normalization of non-ASCII
+// text (utf8proc, #65).
+func TestWhatTheImageLackedWorks(t *testing.T) {
 	s := sharedSession(t)
-	for name, src := range map[string]string{
-		"a Float64 matrix-vector product (BLAS, #67)":     "[1.0 2.0; 3.0 4.0] * [1.0, 1.0]",
-		"uppercase of a non-ASCII string (utf8proc, #65)": "uppercase(\"é\")",
+	for name, tc := range map[string]struct{ src, want string }{
+		"a Float64 matrix-vector product (BLAS, #67)": {"[1.0 2.0; 3.0 4.0] * [1.0, 1.0]", "2-element Vector{Float64}:\n 3.0\n 7.0\n"},
+		"uppercase of a non-ASCII string (#65)":       {"uppercase(\"é\")", "\"É\"\n"},
+		"lowercase of a non-ASCII string (#65)":       {"lowercase(\"ÉÀ\")", "\"éà\"\n"},
+		"normalization (#65)":                         {"Base.Unicode.normalize(\"e\\u0301\", :NFC) == \"\\u00e9\"", "true\n"},
 	} {
-		if _, err := s.Eval(context.Background(), Cell{Source: src}); err == nil {
-			t.Errorf("%s works now: remove it from the README's limitations and this test", name)
+		out, err := s.Eval(context.Background(), Cell{Source: tc.src})
+		if err != nil || out.Stdout != tc.want {
+			t.Errorf("%s: %q %v, want %q", name, out.Stdout, err, tc.want)
 		}
 	}
 }

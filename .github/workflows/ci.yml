@@ -36,9 +36,9 @@ jobs:
           [ -z "$unformatted" ] || { echo "::error::not gofmt-formatted:"; echo "$unformatted"; exit 1; }
       - run: go vet ./...
       - run: go build ./...
-      - name: rcells builds for WebAssembly (the playground's core runs R cells with it)
+      - name: rcells and fcells build for WebAssembly (the playground's core runs R and Fortran cells with them)
         shell: bash
-        run: GOOS=js GOARCH=wasm go build ./rcells ./runtime
+        run: GOOS=js GOARCH=wasm go build ./rcells ./fcells ./runtime
       - name: Test + 100% coverage gate
         shell: bash
         run: |
@@ -69,6 +69,11 @@ jobs:
         run: |
           go test -c -o "$RUNNER_TEMP/rcells.test" ./rcells
           ( ulimit -v 4194304; GOMEMLIMIT=1GiB "$RUNNER_TEMP/rcells.test" -test.run 'TestAllocBomb|TestLimits' -test.count=1 -test.v )
+      # The same for a Fortran cell's array bomb and its step and time limits.
+      - name: Fortran cells' bombs under GOMEMLIMIT and ulimit -v
+        run: |
+          go test -c -o "$RUNNER_TEMP/fcells.test" ./fcells
+          ( ulimit -v 4194304; GOMEMLIMIT=1GiB "$RUNNER_TEMP/fcells.test" -test.run 'TestAllocBomb|TestLimits' -test.count=1 -test.v )
       - name: Fuzz the notebook format for 60 s
         run: go test -run '^$' -fuzz FuzzRoundTrip -fuzztime 60s ./format
       - name: Fuzz the analysis of Ruby cells for 60 s

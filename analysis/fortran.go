@@ -1,23 +1,15 @@
 package analysis
 
-import (
-	"fmt"
-	"strconv"
-)
-
 // Fortran is the language of ```fortran cells.
 const Fortran = "fortran"
 
-// FortranNotRun is the failure of every Fortran cell: go-embedded-fortran
-// parses and checks Fortran, but its evaluator has no procedures, real(4) or
-// modules yet.
-const FortranNotRun = "Fortran cells are not run yet (go-embedded-fortran: the evaluator is incomplete)"
-
-// FortranBlocked is the failure of a cell that reads, directly or through
-// other cells, what Fortran cell c defines.
-func FortranBlocked(c int) string {
-	return "blocked: it depends on cell " + strconv.Itoa(c) + ", a Fortran cell, and Fortran cells are not run yet"
-}
+// The package that runs Fortran cells in the worker: this module's fcells, over
+// go-embedded-fortran's evaluator (eval.Session). It belongs to this module,
+// whose version the work module already requires.
+const (
+	FortranPath   = "github.com/go-notebook/notebook/fcells"
+	FortranModule = "github.com/go-notebook/notebook"
+)
 
 // fortranParser is the Fortran front end, set by SetFortranParser from
 // analysis/parsers. This package never imports go-embedded-fortran, so that a
@@ -35,11 +27,23 @@ func SetFortranParser(f func(index int, src string, state any) (*Cell, any)) { f
 // fortranLang is the Fortran language. Its cells are not independent: a cell
 // sees the modules, types, procedures and declarations of the Fortran cells
 // before it (Sequential). A cell's procedures are in Funcs, and its
-// parameters, derived types and modules in Consts; like C's functions they
-// stay Fortran's, and only the variables cross to the other languages.
-type fortranLang struct{ localsLang }
+// parameters, derived types and modules in Consts.
+//
+// Fortran cells run in one session of the worker (fcells), which holds their
+// modules and variables, so they share them with the other Fortran cells and
+// with no cell of another language (Isolated), as R's do. The front end does
+// know the Go type a variable would take (sema.GoType, bib §7), but nothing
+// carries a value out of the session yet: claiming that variables cross would
+// be claiming a value the Go cell cannot read.
+type fortranLang struct{ builtinLang }
 
 func (fortranLang) Lexer() string { return "fortran" }
+
+func (fortranLang) Crosses(_, _ *Cell, _ string) bool { return false }
+
+func (fortranLang) Isolated() bool { return true }
+
+func (fortranLang) Runtime() Module { return Module{Path: FortranPath, Module: FortranModule} }
 
 // Begin is the state before the first Fortran cell: nothing is defined yet.
 func (fortranLang) Begin() any { return nil }
@@ -60,12 +64,4 @@ func (fortranLang) AnalyzeNext(state any, index int, src string) (*Cell, any) {
 func fortranStandalone(index int, src string) *Cell {
 	c, _ := fortranLang{}.AnalyzeNext(nil, index, src)
 	return c
-}
-
-func fortranReads(c int) string {
-	return fmt.Sprintf("not run: it reads cell %d, a Fortran cell, and Fortran cells are not run yet", c)
-}
-
-func fortranReadsBlocked(c int) string {
-	return fmt.Sprintf("not run: it reads cell %d, which is blocked by a Fortran cell", c)
 }

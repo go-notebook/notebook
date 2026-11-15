@@ -433,7 +433,7 @@ func TestAllocBomb(t *testing.T) {
 			case <-stop:
 				peak <- top
 				return
-			case <-time.After(10 * time.Millisecond):
+			case <-time.After(250 * time.Millisecond): // ReadMemStats stops the world: not often, under -race
 				top = max(top, heap())
 			}
 		}

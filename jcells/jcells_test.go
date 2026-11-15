@@ -497,7 +497,10 @@ func TestSoftScope(t *testing.T) {
 
 // A MethodError is julia's text (go-embedded-julia#55, fixed in v0.17.0).
 func TestMethodErrorText(t *testing.T) {
-	s := sharedSession(t)
+	// the text of a MethodError is built by julia code that takes 2 s natively
+	// and over 30 s under -race on a CI runner: the default limit is not the
+	// test's business
+	s := bounded(t, runtime.RLimits{Timeout: 5 * time.Minute})
 	_, err := s.Eval(context.Background(), Cell{Source: "sin(\"a\")"})
 	if msg := cellErr(t, err); !strings.HasPrefix(msg, "ERROR: MethodError: no method matching sin(::String)") {
 		t.Fatalf("message %q", msg)

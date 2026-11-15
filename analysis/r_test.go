@@ -31,6 +31,11 @@ func TestNoEvaluatorImport(t *testing.T) {
 		if p == "github.com/go-embedded-fortran/fortran/eval" || strings.HasSuffix(p, "/notebook/fcells") {
 			t.Errorf("a package that must not carry Fortran's evaluator depends on %s", p)
 		}
+		// and Julia's (jcells, over go-embedded-julia's interp: the parser, expr
+		// and syntax, are analysis's own)
+		if p == "github.com/go-embedded-julia/julia/interp" || strings.HasSuffix(p, "/notebook/jcells") {
+			t.Errorf("a package that must not carry Julia's interpreter depends on %s", p)
+		}
 	}
 }
 

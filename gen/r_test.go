@@ -4,6 +4,8 @@ import (
 	"go/types"
 	"strings"
 	"testing"
+
+	"github.com/go-notebook/notebook/analysis"
 )
 
 // rImporter adds rcells' surface to the Ruby test importer.
@@ -42,16 +44,16 @@ func TestGenerateR(t *testing.T) {
 		Code{Source: "x <- n\ny <- x + 1\n", Lang: "r"},
 		Code{Source: "z <- y * 2\nz\n", Lang: "r"},
 		Code{Source: "m := n * 2\nm\n"},
-		Code{Source: "j = 1\n", Lang: "julia"},
+		Code{Source: "int j = 1;\n", Lang: "c"},
 		Code{Source: "assign(nm, 1)\n", Lang: "r"},
 	)
 	p := GenerateWith("nb.md", cells, im, Options{})
 	if len(p.Diags) > 0 {
 		t.Fatal(p.Diags)
 	}
-	// The Julia cell is check-only; the dynamic R cell that follows it reads
+	// The C cell is check-only; the dynamic R cell that follows it reads
 	// every name, so it waits for it.
-	if len(p.Deferred) != 2 || p.Deferred[4] != JuliaNotRun || p.Deferred[5] != "not run: it reads cell 4, a Julia cell, and Julia cells are not run yet" {
+	if len(p.Deferred) != 2 || p.Deferred[4] != analysis.CNotRun || p.Deferred[5] != "not run: it reads cell 4, a C cell, and C cells are not run yet" {
 		t.Errorf("deferred %v", p.Deferred)
 	}
 	var vars []string

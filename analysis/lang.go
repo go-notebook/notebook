@@ -307,11 +307,20 @@ func (rubyLang) Runtime() Module {
 	return Module{Path: RubyPath, Module: RubyModule, Version: DefaultRubyVersion}
 }
 
-// juliaLang is highlighted with go-rouge's julia lexer (go-rouge v0.8.0, from
-// Rouge v5.1.0).
-type juliaLang struct{ localsLang }
+// juliaLang: Julia cells run in one kernel of the worker (jcells), which holds
+// their globals, so they share them with the other Julia cells and with no cell
+// of another language (Isolated), as R's do: nothing carries a value between
+// the kernel's Main and a Go variable yet. It is highlighted with go-rouge's
+// julia lexer (go-rouge v0.8.0, from Rouge v5.1.0).
+type juliaLang struct{ builtinLang }
 
 func (juliaLang) Lexer() string { return "julia" }
+
+func (juliaLang) Crosses(_, _ *Cell, _ string) bool { return false }
+
+func (juliaLang) Isolated() bool { return true }
+
+func (juliaLang) Runtime() Module { return Module{Path: JuliaPath, Module: JuliaModule} }
 
 // rLang: R cells run in one R session of the worker, which holds their
 // variables, so they share them with the other R cells and with no cell of
@@ -372,16 +381,7 @@ func withParser(parser *func(int, string) *Cell, name, lang string) func(int, st
 func init() {
 	Register(goLang{builtinLang{name: Go, cell: AnalyzeCell, run: Run{Runs: true}}})
 	Register(rubyLang{localsLang{builtinLang{name: Ruby, cell: AnalyzeRubyCell, run: Run{Runs: true}}}})
-	Register(juliaLang{localsLang{builtinLang{name: Julia, cell: withParser(&juliaParser, Julia, "Julia"), run: Run{
-		NotRun:  JuliaNotRun,
-		Blocked: JuliaBlocked,
-		Reads: func(c int) string {
-			return fmt.Sprintf("not run: it reads cell %d, a Julia cell, and Julia cells are not run yet", c)
-		},
-		ReadsBlocked: func(c int) string {
-			return fmt.Sprintf("not run: it reads cell %d, which is blocked by a Julia cell", c)
-		},
-	}}}})
+	Register(juliaLang{builtinLang{name: Julia, cell: withParser(&juliaParser, Julia, "Julia"), run: Run{Runs: true}}})
 	Register(rLang{builtinLang{name: R, cell: withParser(&rParser, R, "R"), run: Run{Runs: true}}})
 	Register(cLang{localsLang{builtinLang{name: C, cell: cStandalone, run: Run{
 		NotRun:       CNotRun,

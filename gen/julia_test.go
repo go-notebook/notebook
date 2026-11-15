@@ -1,20 +1,45 @@
 package gen
 
 import (
+	"go/types"
 	"strings"
 	"testing"
 )
 
-// A Julia cell is a stub that fails with JuliaNotRun; every cell that reads
-// it, in any language and through any chain, is deferred saying so; the rest
-// compiles and runs.
+// juliaImporter adds jcells' surface to the Ruby test importer.
+type juliaImporter struct {
+	*rubyImporter
+	jcells *types.Package
+}
+
+func newJuliaImporter(t *testing.T) *juliaImporter {
+	return &juliaImporter{
+		rubyImporter: newRubyImporter(t),
+		jcells: check(t, JuliaPath, `package jcells
+type Cell struct { Source string }
+type Session struct{}
+func New() *Session { return nil }
+func (s *Session) Run(c Cell) {}
+`, nil),
+	}
+}
+
+func (im *juliaImporter) Import(path string) (*types.Package, error) {
+	if path == JuliaPath {
+		return im.jcells, nil
+	}
+	return im.rubyImporter.Import(path)
+}
+
+// Julia cells are calls of the notebook's Julia session, which holds their
+// globals: they share none with the other languages, so a Go cell that reads a
+// Julia name is not compiled against it, and what a cell declares is a
+// volatile marker.
 func TestGenerateJulia(t *testing.T) {
-	im := newRubyImporter(t)
+	im := newJuliaImporter(t)
 	cells := rubyCodes(
 		Code{Source: "n := 10\n"},
-		Code{Source: "xs = [i^2 for i in 1:n]\ntotal = sum(xs)\n", Lang: "julia"},
-		Code{Source: "t := total + 1\n"},
-		Code{Source: "u = t * 2\n", Lang: "ruby"},
+		Code{Source: "xs = [i^2 for i in 1:3]\ntotal = sum(xs)\n", Lang: "julia"},
 		Code{Source: "println(total)\n", Lang: "julia"},
 		Code{Source: "m := n * 2\nm\n"},
 	)
@@ -22,23 +47,28 @@ func TestGenerateJulia(t *testing.T) {
 	if len(p.Diags) > 0 {
 		t.Fatal(p.Diags)
 	}
-	want := map[int]string{
-		1: JuliaNotRun,
-		2: "not run: it reads cell 1, a Julia cell, and Julia cells are not run yet",
-		3: "not run: it reads cell 2, which is blocked by a Julia cell",
-		4: JuliaNotRun,
-	}
-	for i, w := range want {
-		if p.Deferred[i] != w {
-			t.Errorf("cell %d: %q, want %q", i, p.Deferred[i], w)
-		}
-	}
-	if _, ok := p.Deferred[5]; ok || len(p.Deferred) != 4 {
+	if len(p.Deferred) != 0 {
 		t.Errorf("deferred %v", p.Deferred)
 	}
+	var vars []string
+	for _, v := range p.Vars {
+		if v.Cell == 1 || v.Cell == 2 {
+			vars = append(vars, v.Name+" "+v.Type)
+		}
+	}
+	if strings.Join(vars, ",") != "_nbj1 func(),_nbj2 func()" {
+		t.Errorf("vars %v", vars)
+	}
 	src := string(p.Source)
-	if !strings.Contains(src, `panic(_nb.Deferred("Julia cells are parsed and checked, but not run yet`) || !strings.Contains(src, "m =  n * 2") {
-		t.Errorf("program:\n%s", src)
+	for _, want := range []string{
+		`_jc "` + JuliaPath + `"`,
+		"var _jcs = _jc.New()\n",
+		"func _nbcell1(_k *_nb.Cell) {\n\t_jcs.Run(_jc.Cell{Source: \"xs = [i^2 for i in 1:3]\\ntotal = sum(xs)\\n\"})\n}",
+		"m =  n * 2",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("program lacks %q:\n%s", want, src)
+		}
 	}
 	// A syntax error in a Julia cell is a diagnostic at its line.
 	p = GenerateWith("nb.md", rubyCodes(Code{Source: "y = 2\nx = (1,\n", Lang: "julia"}), im, Options{})

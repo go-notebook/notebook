@@ -25,7 +25,7 @@ func (rtLang) Runtime() analysis.Module {
 func TestRuntimeLanguages(t *testing.T) {
 	analysis.Register(rtLang{})
 	t.Cleanup(func() { analysis.Unregister("rt") })
-	cells := []gen.Code{{Lang: "go"}, {Lang: "rt"}, {Lang: "ruby"}, {Lang: "rt"}, {Lang: "julia"}, {Lang: "nonesuch"}}
+	cells := []gen.Code{{Lang: "go"}, {Lang: "rt"}, {Lang: "ruby"}, {Lang: "rt"}, {Lang: "c"}, {Lang: "nonesuch"}}
 	if got := runtimeLangs(cells); !reflect.DeepEqual(got, []string{"rt", "ruby"}) {
 		t.Fatalf("runtimeLangs = %v", got)
 	}

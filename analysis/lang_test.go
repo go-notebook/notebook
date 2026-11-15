@@ -124,17 +124,21 @@ func TestRunOf(t *testing.T) {
 	if !RunOf("go").Runs || !RunOf("ruby").Runs || !RunOf("nonesuch").Runs {
 		t.Error("Go, Ruby and an unknown language run")
 	}
-	j := RunOf("julia")
-	if j.Runs || j.NotRun != JuliaNotRun || !strings.Contains(j.NotRun, "M3") {
-		t.Errorf("Julia: %+v", j)
+	if !RunOf("julia").Runs {
+		t.Error("Julia runs")
 	}
-	if got := j.Blocked(2); got != JuliaBlocked(2) {
+	// C is the check-only language that is left
+	j := RunOf("c")
+	if j.Runs || j.NotRun != CNotRun || !strings.Contains(j.NotRun, "M2") {
+		t.Errorf("C: %+v", j)
+	}
+	if got := j.Blocked(2); got != CBlocked(2) {
 		t.Errorf("Blocked = %q", got)
 	}
-	if got := j.Reads(2); got != "not run: it reads cell 2, a Julia cell, and Julia cells are not run yet" {
+	if got := j.Reads(2); got != "not run: it reads cell 2, a C cell, and C cells are not run yet" {
 		t.Errorf("Reads = %q", got)
 	}
-	if got := j.ReadsBlocked(2); got != "not run: it reads cell 2, which is blocked by a Julia cell" {
+	if got := j.ReadsBlocked(2); got != "not run: it reads cell 2, which is blocked by a C cell" {
 		t.Errorf("ReadsBlocked = %q", got)
 	}
 }
@@ -214,8 +218,8 @@ func TestCrossingRuleIsTheOwners(t *testing.T) {
 	if !Shared(&Cell{Lang: Ruby}, &Cell{Lang: "nonesuch"}, "len") {
 		t.Error("an unknown user accepts a Ruby local")
 	}
-	if Shared(&Cell{Lang: Ruby}, &Cell{Lang: Go}, "len") || !Shared(&Cell{Lang: Ruby}, &Cell{Lang: Julia}, "len") {
-		t.Error("Go names are checked, Julia's are not")
+	if Shared(&Cell{Lang: Ruby}, &Cell{Lang: Go}, "len") || !Shared(&Cell{Lang: Ruby}, &Cell{Lang: C}, "len") {
+		t.Error("Go names are checked, C's are not")
 	}
 }
 

@@ -43,7 +43,7 @@ jobs:
         shell: bash
         run: |
           COVERPKG=$(go list ./... | paste -sd, -)
-          go test -race -coverpkg="$COVERPKG" -coverprofile=cover.out ./...
+          go test -timeout 25m -race -coverpkg="$COVERPKG" -coverprofile=cover.out ./...
           go tool cover -func=cover.out | tail -n 25
           cov=$(go tool cover -func=cover.out | tail -1 | awk '{print $3}' | tr -d '%')
           echo "coverage: ${cov}%"
@@ -74,6 +74,16 @@ jobs:
         run: |
           go test -c -o "$RUNNER_TEMP/fcells.test" ./fcells
           ( ulimit -v 4194304; GOMEMLIMIT=1GiB "$RUNNER_TEMP/fcells.test" -test.run 'TestAllocBomb|TestLimits' -test.count=1 -test.v )
+      # The same for a Julia cell's allocation bombs and its step, time and
+      # memory limits. The image (go-embedded-julia's Base, checked against the
+      # digest jcells pins) is fetched by the test binary, in the runner's cache
+      # directory, so the download happens in the first run, outside the limits.
+      - name: Fetch the Julia image
+        run: go test -count=1 ./jcells
+      - name: Julia cells' bombs under GOMEMLIMIT and ulimit -v
+        run: |
+          go test -c -o "$RUNNER_TEMP/jcells.test" ./jcells
+          ( ulimit -v 8388608; GOMEMLIMIT=2GiB "$RUNNER_TEMP/jcells.test" -test.run 'TestAllocBomb|TestMemoryLimit|TestOneArrayIsCapped|TestStepLimit|TestTimeout' -test.count=1 -test.v )
       - name: Fuzz the notebook format for 60 s
         run: go test -run '^$' -fuzz FuzzRoundTrip -fuzztime 60s ./format
       - name: Fuzz the analysis of Ruby cells for 60 s

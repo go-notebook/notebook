@@ -5,7 +5,7 @@ go 1.27.2
 require (
 	github.com/go-embedded-c/c v0.2.1
 	github.com/go-embedded-fortran/fortran v0.17.0
-	github.com/go-embedded-julia/julia v0.5.0
+	github.com/go-embedded-julia/julia v0.15.0
 	github.com/go-embedded-r/r v0.17.1
 	github.com/go-rouge/rouge v0.9.0
 	github.com/go-ruby-irb/irb v0.1.0
@@ -22,18 +22,20 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.7 // indirect
+	github.com/go-bignum/bigfloat v0.2.0 // indirect
 	github.com/go-embedded-r/tre v0.1.3 // indirect
 	github.com/go-ndarray/ndarray v0.40.3 // indirect
 	github.com/go-opentype/opentype v0.16.1 // indirect
 	github.com/go-regexp/engine v0.4.2 // indirect
+	github.com/go-regexp/pcre2 v0.1.0 // indirect
 	github.com/go-ruby-regexp/regexp v0.2.1 // indirect
 	github.com/go-simd/floats v0.15.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	golang.org/x/mod v0.42.0 // indirect
-	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/text v0.43.0 // indirect
+	golang.org/x/sync v0.25.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/opt v0.2.0 // indirect
 	modernc.org/sortutil v1.2.1 // indirect

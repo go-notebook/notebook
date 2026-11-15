@@ -3,7 +3,10 @@ package jcells
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -66,6 +69,13 @@ func bounded(t *testing.T, l runtime.RLimits) *Session {
 	return s
 }
 
+// heap is the live heap, in bytes.
+func heap() uint64 {
+	var ms goruntime.MemStats
+	goruntime.ReadMemStats(&ms)
+	return ms.HeapAlloc
+}
+
 func eval(t *testing.T, s *Session, src string) Output {
 	t.Helper()
 	out, err := s.Eval(context.Background(), Cell{Source: src})
@@ -104,8 +114,12 @@ func TestImageIsPinned(t *testing.T) {
 	var gotV string
 	var gotD [32]byte
 	boom := errors.New("offline")
-	fetchKernel = func(_ context.Context, v string, d [32]byte) (*interp.Kernel, error) {
+	calls := 0
+	var deadline time.Time
+	fetchKernel = func(ctx context.Context, v string, d [32]byte) (*interp.Kernel, error) {
+		calls++
 		gotV, gotD = v, d
+		deadline, _ = ctx.Deadline()
 		return nil, boom
 	}
 	s := New()
@@ -113,35 +127,51 @@ func TestImageIsPinned(t *testing.T) {
 	if gotV != Version || gotD != pinned {
 		t.Fatalf("asked for %s %x", gotV, gotD)
 	}
-	if msg := cellErr(t, err); !strings.HasPrefix(msg, "the Julia kernel could not start: offline") {
-		t.Fatalf("%q", msg)
+	// the generated program's context has no deadline: the fetch has its own
+	if until := time.Until(deadline); until <= 0 || until > fetchTimeout {
+		t.Fatalf("the fetch's deadline is %v away", until)
+	}
+	first := cellErr(t, err)
+	if !strings.HasPrefix(first, "the Julia kernel could not start: offline") {
+		t.Fatalf("%q", first)
 	}
 	if s.k != nil {
 		t.Fatal("a kernel after a failed start")
+	}
+	// the failure is the session's: the next cell fails at once, with the same
+	// text, and nothing is fetched again
+	_, err = s.Eval(context.Background(), Cell{Source: "2"})
+	if calls != 1 || cellErr(t, err) != first {
+		t.Fatalf("%d fetches, then %v", calls, err)
 	}
 	s.Close() // nothing to close
 }
 
 // A different image is refused before it is loaded: a cached file that is not
-// the pinned one is hashed, found different and never run. Offline the refusal
-// is the failed download that follows, which is a failure too.
+// the pinned one is hashed again, found different, removed and never loaded.
+// The file has the name the fetcher gives its cache (version and the first
+// eight bytes of the digest), so the check is what is exercised: without it the
+// bytes would reach LoadImage and the error would be the loader's, not a
+// failed fetch, and the file would stay. The only place to download from
+// refuses the connection, so there is no other source.
 func TestAWrongImageIsNeverLoaded(t *testing.T) {
-	if testing.Short() {
-		t.Skip("downloads")
-	}
 	dir := t.TempDir()
-	path := dir + "/" + interp.ImageAssetName(Version)
+	path := filepath.Join(dir, fmt.Sprintf("%s-%x.img", Version, pinned[:8]))
 	if err := os.WriteFile(path, []byte("not an image"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	// the only place to download from refuses the connection, so the cache is
-	// all there is, and it is not the pinned image
 	k, err := interp.FetchKernel(ctx, Version, pinned, interp.FetchOptions{CacheDir: dir, BaseURL: "https://127.0.0.1:1"}, interp.LoadOptions{}, interp.KernelOptions{})
 	if err == nil {
 		k.Close()
 		t.Fatal("a file that is not the pinned image became a kernel")
+	}
+	if !errors.Is(err, interp.ErrImageFetch) {
+		t.Fatalf("the error is not the failed download that follows the refusal: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("the wrong file was kept: %v", err)
 	}
 }
 
@@ -151,15 +181,25 @@ func TestLimitsOfASession(t *testing.T) {
 		t.Fatalf("%+v", s.l)
 	}
 	o := s.options()
-	if o.Timeout != runtime.DefaultRLimits.Timeout || o.MaxSteps != int64(runtime.DefaultRLimits.MaxSteps) || o.MaxAlloc != int64(runtime.DefaultRLimits.MaxAlloc/8) || o.MaxOutput != maxOutput {
+	if o.Timeout != runtime.DefaultRLimits.Timeout || o.MaxSteps != int64(runtime.DefaultRLimits.MaxSteps) || o.MaxAlloc != int64(runtime.DefaultRLimits.MaxAlloc/16) || o.MaxOutput != maxOutput {
 		t.Fatalf("%+v", o)
 	}
 	u := NewWith(runtime.RLimits{MaxAlloc: runtime.Unbounded, MaxSteps: runtime.Unbounded, Timeout: runtime.Unbounded}).options()
 	if u.Timeout >= 0 || u.MaxSteps >= 0 || u.MaxAlloc >= 0 {
 		t.Fatalf("unbounded is a negative bound: %+v", u)
 	}
+	// a limit of 1 to 15 bytes is one element, not zero, which would be the
+	// kernel's own default
+	for _, b := range []int{1, 7, 15, 16} {
+		if got := NewWith(runtime.RLimits{MaxAlloc: b}).options().MaxAlloc; got != 1 {
+			t.Errorf("MaxAlloc %d bytes is %d elements", b, got)
+		}
+	}
+	if got := NewWith(runtime.RLimits{MaxAlloc: 32}).options().MaxAlloc; got != 2 {
+		t.Errorf("32 bytes is %d elements", got)
+	}
 	t.Setenv(runtime.RLimitsEnv, "800,5,1000000000")
-	if o := New().options(); o.MaxAlloc != 100 || o.MaxSteps != 5 || o.Timeout != time.Second {
+	if o := New().options(); o.MaxAlloc != 50 || o.MaxSteps != 5 || o.Timeout != time.Second {
 		t.Fatalf("from the environment: %+v", o)
 	}
 }
@@ -174,7 +214,7 @@ func TestFailureText(t *testing.T) {
 		"timeout":  {interp.ErrCellTimeout, "stopped: the Julia cell ran longer than 1s, the limit"},
 		"cancel":   {interp.ErrCellCanceled, "stopped: the Julia cell was cancelled"},
 		"steps":    {interp.ErrStepLimit, "stopped: the Julia cell executed more than 7 statements, the limit"},
-		"memory":   {interp.ErrMemoryLimit, "stopped: the Julia cell allocated more than 800 bytes of array elements, the limit"},
+		"memory":   {fmt.Errorf("%w: the cell allocated more than 50 elements", interp.ErrMemoryLimit), "stopped: the Julia cell went over its memory limit: the cell allocated more than 50 elements"},
 		"internal": {interp.ErrInternal, "the Julia cell failed: interp: internal error"},
 		"busy":     {interp.ErrKernelBusy, "the Julia cell failed: interp: the kernel is running a cell"},
 	} {
@@ -328,30 +368,62 @@ func TestStepLimit(t *testing.T) {
 }
 
 func TestMemoryLimit(t *testing.T) {
-	s := bounded(t, runtime.RLimits{MaxAlloc: 8 * 1000})
+	// 16,000 bytes are 1,000 elements, at 16 bytes each
+	s := bounded(t, runtime.RLimits{MaxAlloc: 16 * 1000})
 	_, err := s.Eval(context.Background(), Cell{Source: "zeros(Float64, 10^7)"})
-	if msg := cellErr(t, err); msg != "stopped: the Julia cell allocated more than 8000 bytes of array elements, the limit" {
+	if msg := cellErr(t, err); msg != "stopped: the Julia cell went over its memory limit: the cell allocated more than 1000 elements" {
 		t.Fatalf("message %q", msg)
 	}
 	if out := eval(t, s, "length(zeros(10))"); out.Stdout != "10\n" {
 		t.Fatalf("the session after the limit: %+v", out)
 	}
+	// a limit under one element is one element
+	one := bounded(t, runtime.RLimits{MaxAlloc: 3})
+	_, err = one.Eval(context.Background(), Cell{Source: "zeros(Float64, 10)"})
+	if msg := cellErr(t, err); msg != "stopped: the Julia cell went over its memory limit: the cell allocated more than 1 elements" {
+		t.Fatalf("message %q", msg)
+	}
 }
 
-// A bomb of arrays and a runaway loop, run under GOMEMLIMIT and ulimit -v in
-// CI (the security job): the refusal must come from the limits.
+// One array has at most 2^24 elements (VM.MaxMemoryElems), whatever the limit,
+// also with none: the stated bound is the kernel's, in its own words.
+func TestOneArrayIsCapped(t *testing.T) {
+	s := bounded(t, runtime.RLimits{MaxAlloc: runtime.Unbounded})
+	_, err := s.Eval(context.Background(), Cell{Source: "Array{Float64}(undef, 2^25)"})
+	if msg := cellErr(t, err); !strings.HasPrefix(msg, "stopped: the Julia cell went over its memory limit: ") || !strings.Contains(msg, "VM.MaxMemoryElems is 16777216") || strings.Contains(msg, "-1") {
+		t.Fatalf("message %q", msg)
+	}
+}
+
+// A bomb of arrays, run under GOMEMLIMIT and ulimit -v in CI (the security
+// job): the refusal must be the memory limit's, and the heap must stay under
+// the limit plus the largest single array (2^24 elements, 256 MiB) and the
+// garbage of the run, 256 MiB more. Elements are counted at 16 bytes; a boxed
+// value costs more, which is why the bomb is made of Float64 arrays.
 func TestAllocBomb(t *testing.T) {
 	s := bounded(t, runtime.RLimits{})
-	for _, src := range []string{
-		"Array{Float64}(undef, 10^10)",
-		"xs = []\nfor i in 1:100\n    push!(xs, Array{Float64}(undef, 10^7))\nend",
-	} {
-		_, err := s.Eval(context.Background(), Cell{Source: src})
-		msg := cellErr(t, err)
-		t.Logf("%q: %v", src, msg)
-		if !strings.HasPrefix(msg, "stopped: the Julia cell allocated") && !strings.HasPrefix(msg, "ERROR: ") {
-			t.Fatalf("%q: message %q", src, msg)
+	base := heap()
+	stop, peak := make(chan struct{}), make(chan uint64)
+	go func() {
+		var top uint64
+		for {
+			select {
+			case <-stop:
+				peak <- top
+				return
+			case <-time.After(10 * time.Millisecond):
+				top = max(top, heap())
+			}
 		}
+	}()
+	_, err := s.Eval(context.Background(), Cell{Source: "xs = []\nfor i in 1:100\n    push!(xs, Array{Float64}(undef, 10^7))\nend"})
+	close(stop)
+	top := <-peak
+	if msg := cellErr(t, err); !strings.HasPrefix(msg, "stopped: the Julia cell went over its memory limit: the cell allocated more than 33554432 elements") {
+		t.Fatalf("message %q", msg)
+	}
+	if limit := uint64(runtime.DefaultRLimits.MaxAlloc) + 512<<20; top > base+limit {
+		t.Fatalf("the heap reached %d MiB over its start, the bound is %d MiB", (top-base)>>20, limit>>20)
 	}
 }
 

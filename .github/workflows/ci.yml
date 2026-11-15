@@ -83,7 +83,7 @@ jobs:
       - name: Julia cells' bombs under GOMEMLIMIT and ulimit -v
         run: |
           go test -c -o "$RUNNER_TEMP/jcells.test" ./jcells
-          ( ulimit -v 8388608; GOMEMLIMIT=2GiB "$RUNNER_TEMP/jcells.test" -test.run 'TestAllocBomb|TestMemoryLimit|TestStepLimit|TestTimeout' -test.count=1 -test.v )
+          ( ulimit -v 8388608; GOMEMLIMIT=2GiB "$RUNNER_TEMP/jcells.test" -test.run 'TestAllocBomb|TestMemoryLimit|TestOneArrayIsCapped|TestStepLimit|TestTimeout' -test.count=1 -test.v )
       - name: Fuzz the notebook format for 60 s
         run: go test -run '^$' -fuzz FuzzRoundTrip -fuzztime 60s ./format
       - name: Fuzz the analysis of Ruby cells for 60 s

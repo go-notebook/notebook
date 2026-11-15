@@ -27,6 +27,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-embedded-julia/julia/interp"
 
@@ -35,7 +36,8 @@ import (
 
 // The Base image the kernel boots from: the release of go-embedded-julia that
 // ships it, and the SHA-256 of its julia-image-<Version>.bin asset (from that
-// release's notes and its images.sum). Moving to another release is changing
+// release's notes and its .sha256 asset; the images.sum ledger of go-embedded-julia's
+// main has the line, the v0.15.0 tag's own copy does not). Moving to another release is changing
 // both here, with the module's version in go.mod.
 const (
 	Version = "v0.15.0"
@@ -46,10 +48,19 @@ const (
 // constant parses.
 var pinned, _ = interp.ParseDigest(Digest)
 
-// elemBytes is the size of what the kernel counts a cell's allocations in: its
-// MaxAlloc is in elements (array and dictionary slots), so a limit in bytes
-// is divided by eight, a Float64 or an Int64.
-const elemBytes = 8
+// elemBytes is what one element costs, for turning a limit in bytes into the
+// kernel's: its MaxAlloc counts the elements of the memories (arrays and
+// dictionary tables) a cell allocates, and each element is a Go `any`, 16 bytes
+// on a 64-bit machine. That is a floor, not the heap: a boxed value (a Float64
+// or a struct in an Array{Any}) costs more, and strings and BigInts are not
+// counted at all. Each memory is also capped at 2^24 elements by the VM
+// (interp.DefaultMaxMemoryElems), whatever the limit.
+const elemBytes = 16
+
+// fetchTimeout bounds the first cell's fetch and load of the image, about 100
+// MB, whatever context the generated program (context.Background) gives. A
+// variable for the test.
+var fetchTimeout = 5 * time.Minute
 
 // maxOutput is the number of bytes a cell may write to each of standard output
 // and standard error; the rest is dropped, and the cell says so.
@@ -67,6 +78,8 @@ type Session struct {
 	mu sync.Mutex
 	l  runtime.RLimits
 	k  *interp.Kernel
+	// startErr is why the kernel could not start, kept for the session.
+	startErr error
 }
 
 // fetchKernel boots a kernel from the pinned image: interp.FetchKernel, a seam
@@ -82,9 +95,11 @@ func New() *Session { return NewWith(runtime.ParseRLimits(os.Getenv(runtime.RLim
 
 // NewWith makes a session with the given limits, where a zero field is
 // runtime.DefaultRLimits' value and runtime.Unbounded (-1) is no bound:
-// NewWith(runtime.RLimits{}) is bounded. MaxAlloc is in bytes and counts the
-// elements of the arrays and dictionaries a cell makes, eight bytes each;
-// MaxSteps counts the statements a cell executes.
+// NewWith(runtime.RLimits{}) is bounded. MaxSteps counts the statements a cell
+// executes. MaxAlloc is a budget for the elements of the arrays and dictionary
+// tables a cell allocates, counted at 16 bytes each (elemBytes): a floor of the
+// memory, since boxed values cost more and strings are not counted, so it is
+// not a bound on the heap; no array may have more than 2^24 elements either.
 func NewWith(l runtime.RLimits) *Session { return &Session{l: l.Resolve()} }
 
 // options are the budgets of a cell for the kernel: a negative field is no
@@ -98,13 +113,14 @@ func (s *Session) options() interp.CellOptions {
 	}
 }
 
-// elements is a limit in bytes as one in elements; a negative limit stays
-// negative, which is no bound.
+// elements is a limit in bytes as one in elements, at least one (zero is the
+// kernel's default, not a bound); a negative limit stays negative, which is no
+// bound.
 func elements(bytes int) int64 {
 	if bytes < 0 {
 		return -1
 	}
-	return int64(bytes / elemBytes)
+	return max(int64(bytes/elemBytes), 1)
 }
 
 // Run evaluates a cell. What it prints goes to the worker's standard output,
@@ -114,7 +130,9 @@ func elements(bytes int) int64 {
 // with julia's text of it after "ERROR: ".
 func (s *Session) Run(c Cell) { s.RunContext(context.Background(), c) }
 
-// RunContext is Run that ends, as a failed cell, when ctx is done.
+// RunContext is Run that ends, as a failed cell, when ctx is done. The generated
+// program calls Run, so for it only the limits and the worker's own timeout end
+// a cell; the context is for an embedder that calls Eval or RunContext.
 func (s *Session) RunContext(ctx context.Context, c Cell) {
 	out, err := s.Eval(ctx, c)
 	_, _ = os.Stdout.WriteString(out.Stdout)
@@ -132,17 +150,23 @@ type Output struct{ Stdout, Stderr string }
 // Eval evaluates a cell like RunContext, but returns what it wrote instead of
 // writing it to the process's standard streams. The Output is complete also
 // when the cell fails; the error, a runtime.CellError, says why. A kernel that
-// cannot be made (the image cannot be fetched, or is not the pinned one) is
-// the cell's failure, and the next cell tries again.
+// cannot be made (the image cannot be fetched in fetchTimeout, or is not the
+// pinned one) fails every Julia cell of the session with the same error, at
+// once: the fetch is tried a single time, not at each cell.
 func (s *Session) Eval(ctx context.Context, c Cell) (Output, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.k == nil {
-		k, err := fetchKernel(ctx, Version, pinned)
+	if s.k == nil && s.startErr == nil {
+		fctx, cancel := context.WithTimeout(ctx, fetchTimeout)
+		k, err := fetchKernel(fctx, Version, pinned)
+		cancel()
 		if err != nil {
-			return Output{}, cellError("the Julia kernel could not start: " + err.Error())
+			s.startErr = cellError("the Julia kernel could not start: " + err.Error())
 		}
 		s.k = k
+	}
+	if s.startErr != nil {
+		return Output{}, s.startErr
 	}
 	res := s.k.EvalWith(ctx, c.Source, s.options())
 	out := Output{Stdout: res.Stdout, Stderr: res.Stderr}
@@ -190,7 +214,9 @@ func (s *Session) failure(err error) cellError {
 	case errors.Is(err, interp.ErrStepLimit):
 		return cellError(fmt.Sprintf("stopped: the Julia cell executed more than %d statements, the limit", s.l.MaxSteps))
 	case errors.Is(err, interp.ErrMemoryLimit):
-		return cellError(fmt.Sprintf("stopped: the Julia cell allocated more than %d bytes of array elements, the limit", s.l.MaxAlloc))
+		// the kernel's own words say which bound: the cell's total of elements,
+		// or the 2^24 elements one array may have (VM.MaxMemoryElems)
+		return cellError("stopped: the Julia cell went over its memory limit: " + strings.TrimPrefix(err.Error(), "interp: memory limit exceeded: "))
 	}
 	return cellError("the Julia cell failed: " + err.Error())
 }

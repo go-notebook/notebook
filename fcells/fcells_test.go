@@ -187,14 +187,44 @@ func TestFailures(t *testing.T) {
 }
 
 func TestCapped(t *testing.T) {
-	c := &capped{max: 5}
+	c := &capped{room: &outRoom{left: 5, max: 5}}
 	c.Write([]byte("ab"))
 	c.Write([]byte("cdefg"))
 	c.Write([]byte("h"))
-	if string(c.b) != "abcde" || c.dropped != 3 || !strings.Contains(c.text(), "[output truncated: 3 bytes dropped after the first 5]") {
+	if string(c.b) != "abcde" || c.dropped != 3 || !strings.Contains(c.text(), "[output truncated: 3 bytes dropped after the first 5 in all]") {
 		t.Fatalf("%q %d %q", c.b, c.dropped, c.text())
 	}
-	if c := (&capped{max: 5}); func() string { c.Write([]byte("x")); return c.text() }() != "x" {
+	if c := (&capped{room: &outRoom{left: 5, max: 5}}); func() string { c.Write([]byte("x")); return c.text() }() != "x" {
 		t.Fatal("a short output is as it is")
+	}
+}
+
+// Standard output and standard error share one cap: a cell that alternates
+// them does not get twice the bound.
+func TestOneCapForBothStreams(t *testing.T) {
+	room := &outRoom{left: 10, max: 10}
+	out, errOut := &capped{room: room}, &capped{room: room}
+	out.Write([]byte("123456"))
+	errOut.Write([]byte("abcdef"))
+	out.Write([]byte("xyz"))
+	if string(out.b)+string(errOut.b) != "123456abcd" || out.dropped != 3 || errOut.dropped != 2 {
+		t.Fatalf("%q %q %d %d", out.b, errOut.b, out.dropped, errOut.dropped)
+	}
+}
+
+// A bomb is refused before it is allocated, as the cell's own failure, and the
+// session runs the next cell.
+func TestAllocBombIsRefused(t *testing.T) {
+	s := NewWith(Options{MaxAlloc: 256 << 20})
+	_, err := s.Eval(context.Background(), Cell{Source: "integer, allocatable :: a(:), b(:)\nallocate(a(2**27))\nallocate(b(2**27))\n"})
+	if err == nil || !strings.Contains(err.Error(), "memory limit exceeded") {
+		t.Fatalf("%v", err)
+	}
+	out := eval1(t, s, "print *, 6 * 7\n")
+	if strings.TrimSpace(out.Stdout) != "42" {
+		t.Fatalf("%q", out.Stdout)
+	}
+	if o := NewWith(Options{}).opt; o.MaxAlloc != DefaultMaxAlloc || NewWith(Options{MaxAlloc: -1}).opt.MaxAlloc != 0 {
+		t.Fatalf("defaults: %+v", o)
 	}
 }

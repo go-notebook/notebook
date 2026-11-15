@@ -43,10 +43,15 @@ type Options struct {
 	// Timeout ends a cell that runs longer; zero is DefaultTimeout, negative is
 	// no bound.
 	Timeout time.Duration
-	// MaxOutput is the number of bytes a cell may write to each of standard
-	// output and standard error; the rest is dropped, and the cell says so.
-	// Zero is DefaultMaxOutput.
+	// MaxOutput is the number of bytes a cell may write to standard output and
+	// standard error together; the rest is dropped, and the cell says so. Zero
+	// is DefaultMaxOutput.
 	MaxOutput int
+	// MaxAlloc bounds the Go heap, in bytes, that an array of 64 KiB or more may
+	// grow (the evaluator's SessionOptions.MaxAlloc): an array that would take
+	// the heap past it, after a collection, is refused before it is allocated.
+	// The heap is the process's. Zero is DefaultMaxAlloc, negative is no bound.
+	MaxAlloc int64
 }
 
 // The defaults of Options. The step bound is the evaluator's (about a minute of
@@ -55,6 +60,9 @@ const (
 	DefaultMaxSteps  = eval.DefaultMaxSteps
 	DefaultMaxOutput = 16 << 20
 )
+
+// DefaultMaxAlloc is the heap bound, R's: runtime.DefaultRLimits.MaxAlloc.
+var DefaultMaxAlloc = int64(runtime.DefaultRLimits.MaxAlloc)
 
 // DefaultTimeout is the time a cell may run.
 var DefaultTimeout = runtime.DefaultRLimits.Timeout
@@ -80,9 +88,15 @@ func NewWith(o Options) *Session {
 	if o.MaxOutput == 0 {
 		o.MaxOutput = DefaultMaxOutput
 	}
+	if o.MaxAlloc == 0 {
+		o.MaxAlloc = DefaultMaxAlloc
+	}
+	if o.MaxAlloc < 0 {
+		o.MaxAlloc = 0 // the evaluator's zero is no bound
+	}
 	// the analyser's limits on a cell's source are its own defaults: a notebook
 	// may come from anyone
-	return &Session{opt: o, exec: eval.NewSession(eval.SessionOptions{MaxSteps: o.MaxSteps}).Run}
+	return &Session{opt: o, exec: eval.NewSession(eval.SessionOptions{MaxSteps: o.MaxSteps, MaxAlloc: o.MaxAlloc}).Run}
 }
 
 // Run runs a cell. What it prints goes to the worker's standard output, what it
@@ -117,7 +131,8 @@ func (s *Session) Eval(ctx context.Context, c Cell) (Output, error) {
 		ctx, cancel = context.WithTimeout(ctx, s.opt.Timeout)
 		defer cancel()
 	}
-	out, errOut := &capped{max: s.opt.MaxOutput}, &capped{max: s.opt.MaxOutput}
+	room := &outRoom{left: s.opt.MaxOutput, max: s.opt.MaxOutput}
+	out, errOut := &capped{room: room}, &capped{room: room}
 	_, err := s.run(ctx, c.Source, out, errOut)
 	o := Output{Stdout: out.text(), Stderr: errOut.text()}
 	if err != nil {
@@ -174,18 +189,21 @@ func position(pos string) string {
 
 // capped keeps the first max bytes written to it and counts the rest.
 type capped struct {
-	max     int
+	room    *outRoom
 	b       []byte
 	dropped int
 }
 
+// outRoom is the output a cell may still write, shared by its standard output
+// and its standard error: one cap on both, so that a cell cannot write twice
+// the bound by alternating them.
+type outRoom struct{ left, max int }
+
 func (c *capped) Write(p []byte) (int, error) {
-	room := c.max - len(c.b)
-	if room > len(p) {
-		room = len(p)
-	}
+	room := min(c.room.left, len(p))
 	if room > 0 {
 		c.b = append(c.b, p[:room]...)
+		c.room.left -= room
 	}
 	c.dropped += len(p) - max(room, 0)
 	return len(p), nil
@@ -195,7 +213,7 @@ func (c *capped) text() string {
 	if c.dropped == 0 {
 		return string(c.b)
 	}
-	return fmt.Sprintf("%s\n[output truncated: %d bytes dropped after the first %d]\n", c.b, c.dropped, c.max)
+	return fmt.Sprintf("%s\n[output truncated: %d bytes dropped after the first %d in all]\n", c.b, c.dropped, c.room.max)
 }
 
 // cellError is a cell's own failure, reported as it is rather than with the

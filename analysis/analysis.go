@@ -312,9 +312,17 @@ func (c *Cell) analyzeStmts(masked string, uses map[string]bool) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "", src, parser.AllErrors)
 	c.addErrors(err, len(stmtPrefix))
-	// The prefix always parses as a function declaration with a body, even
-	// when the cell's statements do not.
-	fn := f.Decls[0].(*ast.FuncDecl)
+	// The prefix parses as a function declaration with a body, even when the
+	// cell's statements do not, except when the parser gives up: nesting
+	// deeper than its limit abandons the file with no declaration at all.
+	var fn *ast.FuncDecl
+	if len(f.Decls) > 0 {
+		fn, _ = f.Decls[0].(*ast.FuncDecl)
+	}
+	if fn == nil || fn.Body == nil {
+		c.Errors = append(c.Errors, Error{Cell: c.Index, Msg: "statements could not be parsed"})
+		return
+	}
 	off := func(p token.Pos) int { return fset.Position(p).Offset - len(stmtPrefix) }
 	for _, st := range fn.Body.List {
 		switch st := st.(type) {

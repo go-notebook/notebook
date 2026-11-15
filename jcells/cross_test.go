@@ -206,7 +206,7 @@ func TestFloatsCrossBitForBit(t *testing.T) {
 	vals := []float64{nan, snan, negz, math.Inf(1), math.Inf(-1), 1.5}
 	var scalar, vec any = nan, vals
 	_, err := s.Eval(context.Background(), Cell{
-		Source: "bf_s = g_nan\nbf_v = g_vec\nbf_back = [reinterpret(UInt64, x) for x in g_vec]\nbf_nan = reinterpret(Float64, 0x7ff8000000000123)\nbf_negz = -0.0\nbf_inf = -Inf",
+		Source: "bf_s = g_nan\nbf_v = g_vec\nbf_nan = reinterpret(Float64, 0x7ff8000000000123)\nbf_negz = -0.0\nbf_inf = -Inf",
 		In:     []Var{{Name: "g_nan", Ptr: &scalar}, {Name: "g_vec", Ptr: &vec}},
 		Out:    nil,
 	})

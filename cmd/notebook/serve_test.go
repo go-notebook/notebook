@@ -12,6 +12,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-notebook/notebook/format"
+	"github.com/go-notebook/notebook/kernel"
 )
 
 func TestLiveHandler(t *testing.T) {
@@ -119,14 +122,23 @@ func TestServe(t *testing.T) {
 	_ = os.WriteFile(path, []byte("```go\nimport \"example.invalid/x\"\nx.Y()\n```\n"), 0o644)
 	_ = os.Chtimes(path, later, later)
 	waitFor(t, out, "tidy")
-	resp, err = http.Get(url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if !strings.Contains(string(body), "go mod tidy") {
-		t.Errorf("error page:\n%s", body)
+	// the page is polled, not read once: it is published with the run's
+	// result, and a read at one instant is a race with it
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		resp, err = http.Get(url)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if strings.Contains(string(body), "go mod tidy") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no error page after 30 s:\n%s", body)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	close(stop)
 	if err := <-done; err != nil {
@@ -145,5 +157,40 @@ func TestServeVerb(t *testing.T) {
 	var out syncBuffer
 	if err := run([]string{"serve", "-addr", "127.0.0.1:0", "-work", t.TempDir(), path}, &out, &out); err != nil || !strings.Contains(out.String(), "serving") {
 		t.Errorf("serve verb: %v %q", err, out.String())
+	}
+}
+
+// When a run fails before any cell, the page that says so is published BEFORE
+// the log line that names the failure: whoever waits for the line (a person
+// watching the terminal, a test) and then reloads must find that page. This
+// checks the order itself, from the page callback, so it fails on any
+// machine when the order is reversed: no race is waited for.
+func TestWatchPublishesTheFailureBeforeLoggingIt(t *testing.T) {
+	path := notebook(t, "```go\nimport \"example.invalid/x\"\nx.Y()\n```\n")
+	t.Setenv("GOPROXY", "off")
+	k, err := newKernel(path, filepath.Join(t.TempDir(), "w"), "", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer k.Close()
+	out := &syncBuffer{}
+	stop := make(chan struct{})
+	var loggedAtPublish string
+	published := false
+	err = watch(k, path, time.Millisecond, out, stop, func(nb *format.Notebook, rep *kernel.Report) error {
+		if nb == nil && !published {
+			published, loggedAtPublish = true, out.String()
+			close(stop)
+		}
+		return nil
+	})
+	if err != nil || !published {
+		t.Fatalf("watch: %v, published %v", err, published)
+	}
+	if loggedAtPublish != "" {
+		t.Errorf("the log line came before the page:\n%s", loggedAtPublish)
+	}
+	if !strings.Contains(out.String(), "go mod tidy") {
+		t.Errorf("the failure is not logged:\n%s", out.String())
 	}
 }

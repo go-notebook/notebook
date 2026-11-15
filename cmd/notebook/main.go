@@ -431,8 +431,10 @@ func watch(k *kernel.Kernel, path string, interval time.Duration, w io.Writer, s
 			nb, rep, err := once(k, path)
 			switch {
 			case err != nil:
-				fmt.Fprintf(w, "%s  %v\n", time.Now().Format("15:04:05"), err)
+				// the page first, then the log line: whoever waits for the line
+				// (a person, a test) and then reloads must find the page it names
 				_ = page(nil, &kernel.Report{Diags: []gen.Diag{{Cell: -1, Msg: err.Error()}}})
+				fmt.Fprintf(w, "%s  %v\n", time.Now().Format("15:04:05"), err)
 			default:
 				ran := 0
 				for _, r := range rep.Results {

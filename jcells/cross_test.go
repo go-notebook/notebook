@@ -156,6 +156,14 @@ func TestIfAbsent(t *testing.T) {
 	if err != nil || out.Stdout != "1\n" {
 		t.Fatalf("the kernel's value was overwritten: %q %v", out.Stdout, err)
 	}
+	// a variable that never came through an Out list is held all the same
+	// (Kernel.Has asks the kernel, where the session's own record could not know)
+	eval(t, s, "ia_w = 7")
+	var other any = int64(100)
+	out, err = s.Eval(context.Background(), Cell{Source: "ia_w", In: []Var{{Name: "ia_w", Ptr: &other, IfAbsent: true}}})
+	if err != nil || out.Stdout != "7\n" {
+		t.Fatalf("a variable the kernel holds was overwritten: %q %v", out.Stdout, err)
+	}
 	var lost any = int64(41)
 	out, err = s.Eval(context.Background(), Cell{Source: "ia_y + 1", In: []Var{{Name: "ia_y", Ptr: &lost, IfAbsent: true}}})
 	if err != nil || out.Stdout != "42\n" {
@@ -249,11 +257,9 @@ func TestEmptyArraysCross(t *testing.T) {
 	if got, ok := m.(interp.Matrix[int64]); !ok || got.Rows != 0 || got.Cols != 3 || len(got.Data) != 0 {
 		t.Fatalf("0x3 matrix: %#v", m)
 	}
-	// A matrix with zero columns does not come out: go-embedded-julia's Get
-	// refuses a 3 by 0 matrix (it checks the first dimension against the empty
-	// memory), so the variable stays in Julia. Pinned so that a fix shows up.
-	if n30 != nil {
-		t.Fatalf("a 3x0 matrix crosses now (go-embedded-julia fixed it): %#v; remove this pin", n30)
+	// A matrix with zero columns comes out too (go-embedded-julia#76, v0.18.0).
+	if got, ok := n30.(interp.Matrix[float64]); !ok || got.Rows != 3 || got.Cols != 0 || len(got.Data) != 0 {
+		t.Fatalf("3x0 matrix: %#v", n30)
 	}
 }
 

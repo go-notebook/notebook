@@ -106,10 +106,10 @@ func TestImageIsPinned(t *testing.T) {
 	if err != nil || d != pinned {
 		t.Fatalf("Digest %q does not parse: %v", Digest, err)
 	}
-	if Version != "v0.18.0" || Digest != "b2f03e85c0beece0dee586849f581b5ced5a01008265f9c60ac323f229b7d523" {
+	if Version != "v0.19.0" || Digest != "9cb9e14fa9cf0f6f471df4bbb5270aba5d560609f2a9fe00c3a005af407b0b6f" {
 		t.Fatalf("the pinned image changed: %s %s (moving it is a decision: go.mod, images.sum, this test)", Version, Digest)
 	}
-	if want := "julia-image-v0.18.0.bin"; interp.ImageAssetName(Version) != want {
+	if want := "julia-image-v0.19.0.bin"; interp.ImageAssetName(Version) != want {
 		t.Fatalf("asset %s", interp.ImageAssetName(Version))
 	}
 	old := fetchKernel

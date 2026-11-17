@@ -140,13 +140,24 @@ func TestSessionStops(t *testing.T) {
 		t.Errorf("memory: %+v", ev)
 	}
 	// Ctrl-C: the session stops the worker.
+	// The interrupt waits for the input to say it runs: a blind sleep fired
+	// before a slow Windows worker was up (Interrupt does nothing between
+	// inputs, so the 3 s limit stopped it) or before "started" was printed.
+	started := make(chan struct{})
+	var out strings.Builder
+	var once sync.Once
 	go func() {
-		time.Sleep(500 * time.Millisecond)
+		<-started
 		s.Interrupt()
 	}()
-	ev, out := eval(s, "puts 'started'; loop { }", 5)
-	if !ev.Lost || !strings.HasPrefix(ev.Error, "interrupted:") || out != "started\n" {
-		t.Errorf("interrupt: %+v, printed %q", ev, out)
+	ev = s.Eval("puts 'started'; loop { }", 5, func(o string) {
+		out.WriteString(o)
+		if strings.Contains(out.String(), "started\n") {
+			once.Do(func() { close(started) })
+		}
+	})
+	if !ev.Lost || !strings.HasPrefix(ev.Error, "interrupted:") || out.String() != "started\n" {
+		t.Errorf("interrupt: %+v, printed %q", ev, out.String())
 	}
 	if goruntime.GOOS != "windows" { // rbgo has no Process.kill on Windows
 		ev, _ = eval(s, "Process.kill(:KILL, Process.pid); sleep 5", 6)

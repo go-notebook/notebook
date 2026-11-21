@@ -517,7 +517,8 @@ func TestMatrixProductsWork(t *testing.T) {
 	// the BLAS shim: more than 50 million statements on go-embedded-julia v0.22.0
 	// (7 s natively, 750 s on the windows-latest coverage lane), so under the
 	// default limits a cell's first A*B is refused. That is go-embedded-julia's
-	// to fix; this test is about the values, unbounded until it is.
+	// to fix (go-embedded-julia/julia#119); this test is about the values,
+	// unbounded until it is.
 	s := bounded(t, runtime.RLimits{Timeout: 20 * time.Minute, MaxSteps: runtime.Unbounded})
 	for name, tc := range map[string]struct{ src, want string }{
 		"a Float64 matrix product A*B": {"[1.0 2.0; 3.0 4.0] * [5.0 6.0; 7.0 8.0]", "2×2 Matrix{Float64}:\n 19.0  22.0\n 43.0  50.0\n"},

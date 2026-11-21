@@ -513,9 +513,12 @@ func TestMethodErrorText(t *testing.T) {
 // Level-3 BLAS works on the Base image since v0.22.0 (go-embedded-julia#113,
 // forwarded to go-blas): a Float64 matrix product and A'*A.
 func TestMatrixProductsWork(t *testing.T) {
-	// the first product compiles julia's generic matmul methods: that is not the
-	// default step limit's business
-	s := bounded(t, runtime.RLimits{Timeout: 5 * time.Minute, MaxSteps: runtime.Unbounded})
+	// The first product compiles julia's generic matmul methods before it reaches
+	// the BLAS shim: more than 50 million statements on go-embedded-julia v0.22.0
+	// (7 s natively, 750 s on the windows-latest coverage lane), so under the
+	// default limits a cell's first A*B is refused. That is go-embedded-julia's
+	// to fix; this test is about the values, unbounded until it is.
+	s := bounded(t, runtime.RLimits{Timeout: 20 * time.Minute, MaxSteps: runtime.Unbounded})
 	for name, tc := range map[string]struct{ src, want string }{
 		"a Float64 matrix product A*B": {"[1.0 2.0; 3.0 4.0] * [5.0 6.0; 7.0 8.0]", "2×2 Matrix{Float64}:\n 19.0  22.0\n 43.0  50.0\n"},
 		"a triangular product (trmm)":  {"using LinearAlgebra; LowerTriangular([2.0 0.0; 1.0 3.0]) * [1.0 2.0; 3.0 4.0]", "2×2 Matrix{Float64}:\n  2.0   4.0\n 10.0  14.0\n"},

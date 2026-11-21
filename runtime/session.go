@@ -27,7 +27,8 @@ type Interpreter interface {
 const SessionFile = "(irb)"
 
 // ServeInterpreter is the main of a session's worker: it answers the
-// kernel's "eval" and "complete" requests with the interpreter open returns
+// kernel's "eval" and "complete" requests (after one Ready reply, once the
+// interpreter is open) with the interpreter open returns
 // until the kernel says exit or closes the input, and ends the process at
 // once when the input closes in the middle of an evaluation (the kernel is
 // gone). What the interpreter prints, through out and errOut, is sent to the
@@ -40,7 +41,22 @@ func ServeInterpreter(open func(out, errOut io.Writer) Interpreter) {
 	in := protocolIn()
 	out := protocolOut()
 	strayToStderr()
+	time.Sleep(bootDelay(os.Getenv(BootDelayEnv)))
 	serveInterpreter(open, in, out, exitProcess)
+}
+
+// BootDelayEnv is the environment variable that makes a session's worker
+// wait, before it opens its interpreter, for the duration it holds (Go
+// syntax, "3s"): the tests' way to boot slowly, as a loaded machine does.
+const BootDelayEnv = "NOTEBOOK_BOOT_DELAY"
+
+// bootDelay is the delay s asks for; none when s is empty or not a duration.
+func bootDelay(s string) time.Duration {
+	d, err := time.ParseDuration(s)
+	if err != nil || d < 0 {
+		return 0
+	}
+	return d
 }
 
 // exitProcess is os.Exit, a seam for the tests.
@@ -73,6 +89,7 @@ func serveInterpreter(open func(out, errOut io.Writer) Interpreter, in io.Reader
 	s := &session{enc: json.NewEncoder(out)}
 	w := streamWriter{s}
 	interp := open(w, w)
+	s.send(Reply{Ready: true}) // the kernel waits for it before it times an input
 	reqs := make(chan Request)
 	go func() {
 		sc := bufio.NewScanner(in)

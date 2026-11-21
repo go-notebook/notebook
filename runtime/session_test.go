@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fakeInterp is an Interpreter whose inputs are Go-side commands.
@@ -75,6 +76,11 @@ func converse(t *testing.T, reqs ...string) ([]Reply, bool) {
 		}
 		reps = append(reps, r)
 	}
+	// The worker says it is up before it answers anything.
+	if len(reps) == 0 || !reps[0].Ready {
+		t.Fatalf("the first reply is not Ready: %+v", reps)
+	}
+	reps = reps[1:]
 	mu.Lock()
 	defer mu.Unlock()
 	return reps, exited
@@ -128,6 +134,14 @@ func TestServeInterpreter(t *testing.T) {
 	}
 	if !strings.HasPrefix(reps[11].Error, "unknown op bad request: ") {
 		t.Errorf("bad: %+v", reps[11])
+	}
+}
+
+func TestBootDelay(t *testing.T) {
+	for in, want := range map[string]time.Duration{"": 0, "soon": 0, "-3s": 0, "250ms": 250 * time.Millisecond, "3s": 3 * time.Second} {
+		if got := bootDelay(in); got != want {
+			t.Errorf("bootDelay(%q) = %v, want %v", in, got, want)
+		}
 	}
 }
 

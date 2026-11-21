@@ -106,10 +106,10 @@ func TestImageIsPinned(t *testing.T) {
 	if err != nil || d != pinned {
 		t.Fatalf("Digest %q does not parse: %v", Digest, err)
 	}
-	if Version != "v0.20.0" || Digest != "35fc17810de0e39bd0bb06fd66701d8b450d26d289f0a3db802b9e000d4fc5f5" {
+	if Version != "v0.22.0" || Digest != "dcec3dc808df198aab30aac68a28420d48e167e3c8510d0f8d75d8fad567b364" {
 		t.Fatalf("the pinned image changed: %s %s (moving it is a decision: go.mod, images.sum, this test)", Version, Digest)
 	}
-	if want := "julia-image-v0.20.0.bin"; interp.ImageAssetName(Version) != want {
+	if want := "julia-image-v0.22.0.bin"; interp.ImageAssetName(Version) != want {
 		t.Fatalf("asset %s", interp.ImageAssetName(Version))
 	}
 	old := fetchKernel
@@ -507,6 +507,24 @@ func TestMethodErrorText(t *testing.T) {
 	_, err := s.Eval(context.Background(), Cell{Source: "sin(\"a\")"})
 	if msg := cellErr(t, err); !strings.HasPrefix(msg, "ERROR: MethodError: no method matching sin(::String)") {
 		t.Fatalf("message %q", msg)
+	}
+}
+
+// Level-3 BLAS works on the Base image since v0.22.0 (go-embedded-julia#113,
+// forwarded to go-blas): a Float64 matrix product and A'*A.
+func TestMatrixProductsWork(t *testing.T) {
+	// the first product compiles julia's generic matmul methods: that is not the
+	// default step limit's business
+	s := bounded(t, runtime.RLimits{Timeout: 5 * time.Minute, MaxSteps: runtime.Unbounded})
+	for name, tc := range map[string]struct{ src, want string }{
+		"a Float64 matrix product A*B": {"[1.0 2.0; 3.0 4.0] * [5.0 6.0; 7.0 8.0]", "2×2 Matrix{Float64}:\n 19.0  22.0\n 43.0  50.0\n"},
+		"a triangular product (trmm)":  {"using LinearAlgebra; LowerTriangular([2.0 0.0; 1.0 3.0]) * [1.0 2.0; 3.0 4.0]", "2×2 Matrix{Float64}:\n  2.0   4.0\n 10.0  14.0\n"},
+		"A'*A":                         {"A = [1.0 2.0; 3.0 4.0]; A' * A", "2×2 Matrix{Float64}:\n 10.0  14.0\n 14.0  20.0\n"},
+	} {
+		out, err := s.Eval(context.Background(), Cell{Source: tc.src})
+		if err != nil || out.Stdout != tc.want {
+			t.Errorf("%s: %q %v, want %q", name, out.Stdout, err, tc.want)
+		}
 	}
 }
 

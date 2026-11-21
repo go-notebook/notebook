@@ -52,6 +52,10 @@ func TestServeInterpreterProcess(t *testing.T) {
 	// read the one reply, not up to an end.
 	sc := bufio.NewScanner(outR)
 	var r Reply
+	if !sc.Scan() || json.Unmarshal(sc.Bytes(), &r) != nil || !r.Ready {
+		t.Errorf("first reply %q", sc.Text())
+	}
+	r = Reply{}
 	if !sc.Scan() || json.Unmarshal(sc.Bytes(), &r) != nil || r.Inspect != `"x"` {
 		t.Errorf("reply %q", sc.Text())
 	}

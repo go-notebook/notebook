@@ -42,6 +42,11 @@ func main() {
 // return) is stopped, as a timed-out input's is.
 var CompleteTimeout = 5 * time.Second
 
+// BootTimeout bounds how long a worker may take to boot, before CellTimeout
+// starts to count: generous, as a loaded machine boots slowly. A variable
+// for the tests.
+var BootTimeout = 60 * time.Second
+
 // Session is an interactive Ruby session, as irb is (notebook irb): inputs
 // evaluated one at a time in one interpreter, any local assigned as often as
 // wanted, `_` the last value. The interpreter runs in a worker process of
@@ -157,7 +162,38 @@ func (s *Session) start() error {
 	s.mu.Lock()
 	s.worker, s.in, s.out = cmd, in, sc
 	s.mu.Unlock()
-	return nil
+	return s.awaitReady()
+}
+
+// awaitReady waits for the worker's first reply, which says its interpreter
+// is up: the boot of a worker (the Go runtime, rbgo, the bindings) is the
+// session's, not the time of the input that finds it, which CellTimeout
+// bounds. A worker that does not say so within BootTimeout, or stops, is
+// stopped, and the error names its boot.
+func (s *Session) awaitReady() error {
+	var timedOut atomic.Bool
+	t := time.AfterFunc(BootTimeout, func() {
+		timedOut.Store(true)
+		s.kill()
+	})
+	defer t.Stop()
+	var err error
+	if s.out.Scan() {
+		var rep runtime.Reply
+		if err = json.Unmarshal(s.out.Bytes(), &rep); err == nil && !rep.Ready {
+			err = fmt.Errorf("it said %q first", s.out.Text())
+		}
+	} else if err = s.out.Err(); err == nil {
+		err = io.EOF
+	}
+	if err == nil {
+		return nil
+	}
+	s.stop()
+	if timedOut.Load() {
+		return fmt.Errorf("the Ruby worker did not boot within %s; it was killed", BootTimeout)
+	}
+	return fmt.Errorf("the Ruby worker's boot failed: %w", err)
 }
 
 // Eval evaluates one input, which starts at line of the session (the line

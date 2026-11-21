@@ -42,7 +42,7 @@ func TestServeInterpreterProcess(t *testing.T) {
 		_ = json.Unmarshal(sc.Bytes(), &r)
 		reps = append(reps, r)
 	}
-	if len(reps) != 1 || reps[0].Inspect != `"x"` {
+	if len(reps) != 2 || !reps[0].Ready || reps[1].Inspect != `"x"` {
 		t.Errorf("replies %+v", reps)
 	}
 	if c := <-exited; c != 0 {

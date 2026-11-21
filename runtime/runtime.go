@@ -139,6 +139,7 @@ type Reply struct {
 	// ends it. Inspect is the input's value as irb shows it, Class the
 	// exception's class when it raised, Candidates the completions of a word.
 	More       bool     `json:"more,omitempty"`
+	Ready      bool     `json:"ready,omitempty"` // the worker's first reply: its interpreter is up
 	Inspect    string   `json:"inspect,omitempty"`
 	Class      string   `json:"class,omitempty"`
 	Candidates []string `json:"candidates,omitempty"`

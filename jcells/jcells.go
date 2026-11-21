@@ -40,8 +40,8 @@ import (
 // main has the line, the v0.15.0 tag's own copy does not). Moving to another release is changing
 // both here, with the module's version in go.mod.
 const (
-	Version = "v0.20.0"
-	Digest  = "35fc17810de0e39bd0bb06fd66701d8b450d26d289f0a3db802b9e000d4fc5f5"
+	Version = "v0.22.0"
+	Digest  = "dcec3dc808df198aab30aac68a28420d48e167e3c8510d0f8d75d8fad567b364"
 )
 
 // pinned is Digest as the kernel takes it; TestImageIsPinned checks that the

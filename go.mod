@@ -5,7 +5,7 @@ go 1.27.2
 require (
 	github.com/go-embedded-c/c v0.2.1
 	github.com/go-embedded-fortran/fortran v0.30.0
-	github.com/go-embedded-julia/julia v0.24.0
+	github.com/go-embedded-julia/julia v0.25.0
 	github.com/go-embedded-r/r v0.22.0
 	github.com/go-rouge/rouge v0.9.0
 	github.com/go-ruby-irb/irb v0.1.0
@@ -23,7 +23,7 @@ require (
 require (
 	github.com/andybalholm/brotli v1.2.7 // indirect
 	github.com/go-bignum/bigfloat v0.2.0 // indirect
-	github.com/go-blas/blas v0.3.0 // indirect
+	github.com/go-blas/blas v0.4.0 // indirect
 	github.com/go-embedded-r/tre v0.1.3 // indirect
 	github.com/go-ndarray/ndarray v0.44.0 // indirect
 	github.com/go-numerics/optimize v0.6.0 // indirect

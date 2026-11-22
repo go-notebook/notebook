@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -106,10 +108,10 @@ func TestImageIsPinned(t *testing.T) {
 	if err != nil || d != pinned {
 		t.Fatalf("Digest %q does not parse: %v", Digest, err)
 	}
-	if Version != "v0.24.0" || Digest != "cd5ddf2107c2a553247b87c59b04f803b7104d020a5ce5bbb2c044b82ff4cb35" {
+	if Version != "v0.25.0" || Digest != "a1460281911fa0bc0ec8c9b42180f698998cea9b41e51a4c95237b6c75c007db" {
 		t.Fatalf("the pinned image changed: %s %s (moving it is a decision: go.mod, images.sum, this test)", Version, Digest)
 	}
-	if want := "julia-image-v0.24.0.bin"; interp.ImageAssetName(Version) != want {
+	if want := "julia-image-v0.25.0.bin"; interp.ImageAssetName(Version) != want {
 		t.Fatalf("asset %s", interp.ImageAssetName(Version))
 	}
 	old := fetchKernel
@@ -525,6 +527,63 @@ func TestMatrixProductsWork(t *testing.T) {
 		if err != nil || out.Stdout != tc.want {
 			t.Errorf("%s: %q %v, want %q", name, out.Stdout, err, tc.want)
 		}
+	}
+}
+
+// LAPACK's LU and Cholesky work on the Base image since v0.25.0
+// (go-embedded-julia#119): A \ b, cholesky, and a singular matrix raising
+// SingularException. The cell prints the numbers with println, the expectations
+// are computed here, and the solution is judged by its residual, not by text.
+// All under the default limits.
+func TestLinearSolveAndCholeskyWork(t *testing.T) {
+	s := bounded(t, runtime.RLimits{})
+	floats := func(src string, n int) []float64 {
+		t.Helper()
+		out, err := s.Eval(context.Background(), Cell{Source: src})
+		if err != nil {
+			t.Fatalf("%s: %v", src, err)
+		}
+		var v []float64
+		for _, line := range strings.Fields(out.Stdout) {
+			f, perr := strconv.ParseFloat(line, 64)
+			if perr != nil {
+				t.Fatalf("%s: output %q: %v", src, out.Stdout, perr)
+			}
+			v = append(v, f)
+		}
+		if len(v) != n {
+			t.Fatalf("%s: %d numbers in %q, want %d", src, len(v), out.Stdout, n)
+		}
+		return v
+	}
+
+	// A \ b: the residual of the solution, computed here, is within 1e-12
+	// (the exact solution is x = [1, 2]; a stated bound of 1e-12 is a few
+	// hundred ulps for entries of this size)
+	A := [2][2]float64{{4, 3}, {6, 3}}
+	b := [2]float64{10, 12}
+	x := floats("A = [4.0 3.0; 6.0 3.0]; b = [10.0, 12.0]; x = A \\ b; println(x[1]); println(x[2])", 2)
+	for i := range A {
+		if r := math.Abs(A[i][0]*x[0] + A[i][1]*x[1] - b[i]); r > 1e-12 {
+			t.Errorf("A \\ b = %v: residual %g in row %d exceeds 1e-12", x, r, i)
+		}
+	}
+
+	// cholesky([4 2; 2 3]): L = [2 0; 1 sqrt(2)], and L*L' reproduces A
+	l := floats("using LinearAlgebra; F = cholesky([4.0 2.0; 2.0 3.0]); L = Matrix(F.L); println(L[1,1]); println(L[2,1]); println(L[2,2])", 3)
+	for i, want := range []float64{2, 1, math.Sqrt2} {
+		if math.Abs(l[i]-want) > 1e-12 {
+			t.Errorf("cholesky L entry %d = %v, want %v", i, l[i], want)
+		}
+	}
+	if d := math.Abs(l[1]*l[1] + l[2]*l[2] - 3); d > 1e-12 {
+		t.Errorf("L*L' differs from A by %g", d)
+	}
+
+	// a singular matrix is a SingularException, not a wrong answer
+	_, err := s.Eval(context.Background(), Cell{Source: "[1.0 2.0; 2.0 4.0] \\ [1.0, 2.0]"})
+	if msg := cellErr(t, err); !strings.Contains(msg, "SingularException") {
+		t.Errorf("singular solve: message %q lacks SingularException", msg)
 	}
 }
 

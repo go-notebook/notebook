@@ -106,10 +106,10 @@ func TestImageIsPinned(t *testing.T) {
 	if err != nil || d != pinned {
 		t.Fatalf("Digest %q does not parse: %v", Digest, err)
 	}
-	if Version != "v0.22.0" || Digest != "dcec3dc808df198aab30aac68a28420d48e167e3c8510d0f8d75d8fad567b364" {
+	if Version != "v0.24.0" || Digest != "cd5ddf2107c2a553247b87c59b04f803b7104d020a5ce5bbb2c044b82ff4cb35" {
 		t.Fatalf("the pinned image changed: %s %s (moving it is a decision: go.mod, images.sum, this test)", Version, Digest)
 	}
-	if want := "julia-image-v0.22.0.bin"; interp.ImageAssetName(Version) != want {
+	if want := "julia-image-v0.24.0.bin"; interp.ImageAssetName(Version) != want {
 		t.Fatalf("asset %s", interp.ImageAssetName(Version))
 	}
 	old := fetchKernel
@@ -511,15 +511,11 @@ func TestMethodErrorText(t *testing.T) {
 }
 
 // Level-3 BLAS works on the Base image since v0.22.0 (go-embedded-julia#113,
-// forwarded to go-blas): a Float64 matrix product and A'*A.
+// forwarded to go-blas): a Float64 matrix product and A'*A. It runs under the
+// default limits: since v0.24.0 the image carries the inference of a matrix
+// display, which cost about 70 million statements on the first product before.
 func TestMatrixProductsWork(t *testing.T) {
-	// The first product compiles julia's generic matmul methods before it reaches
-	// the BLAS shim: more than 50 million statements on go-embedded-julia v0.22.0
-	// (7 s natively, 750 s on the windows-latest coverage lane), so under the
-	// default limits a cell's first A*B is refused. That is go-embedded-julia's
-	// to fix (go-embedded-julia/julia#119); this test is about the values,
-	// unbounded until it is.
-	s := bounded(t, runtime.RLimits{Timeout: 20 * time.Minute, MaxSteps: runtime.Unbounded})
+	s := bounded(t, runtime.RLimits{})
 	for name, tc := range map[string]struct{ src, want string }{
 		"a Float64 matrix product A*B": {"[1.0 2.0; 3.0 4.0] * [5.0 6.0; 7.0 8.0]", "2×2 Matrix{Float64}:\n 19.0  22.0\n 43.0  50.0\n"},
 		"a triangular product (trmm)":  {"using LinearAlgebra; LowerTriangular([2.0 0.0; 1.0 3.0]) * [1.0 2.0; 3.0 4.0]", "2×2 Matrix{Float64}:\n  2.0   4.0\n 10.0  14.0\n"},
